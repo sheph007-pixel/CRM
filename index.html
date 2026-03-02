@@ -2435,13 +2435,7 @@ async function initMSAL() {
     if (typeof msalInstance.initialize === 'function') {
       await msalInstance.initialize();
     }
-    try {
-      var redirectResp = await msalInstance.handleRedirectPromise();
-      if (redirectResp && redirectResp.account) {
-        currentAccount = redirectResp.account;
-        userEmail = currentAccount.username;
-      }
-    } catch(e) { console.warn('Redirect handle:', e); }
+    try { await msalInstance.handleRedirectPromise(); } catch(e) { console.warn('Redirect handle:', e); }
     return msalInstance;
   } catch(e) {
     console.error('MSAL init error:', e);
@@ -2508,18 +2502,13 @@ async function getAccessToken() {
     });
     return resp.accessToken;
   } catch(e) {
-    // Silent failed — try popup, fall back to redirect if popup blocked
+    // Silent failed — try interactive popup
     try {
       const resp = await msalInstance.acquireTokenPopup({ scopes: tokenScopes });
       currentAccount = resp.account;
       return resp.accessToken;
     } catch(popupErr) {
-      if (popupErr.errorCode === 'popup_window_error' || popupErr.errorCode === 'empty_window_error') {
-        // Popup blocked — use redirect instead
-        await msalInstance.acquireTokenRedirect({ scopes: tokenScopes });
-        // Page will redirect, so this line won't execute
-        return null;
-      }
+      console.warn('Token acquisition failed:', popupErr.errorCode || popupErr.message);
       throw popupErr;
     }
   }
