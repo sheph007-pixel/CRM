@@ -3336,6 +3336,18 @@ function buildCellHTML(col, c, color) {
   return '<span class="cell-val">' + esc(val) + '</span>';
 }
 
+// Map sort column IDs to actual data properties
+function _getSortVal(c, colKey) {
+  if (colKey === 'company') return (c.name || '').toString();
+  if (colKey === 'contact') return (c.contact || '').toString();
+  if (colKey === 'companyType') return getCompanyType(c.domain);
+  if (colKey === 'lastActivity') return c.lastDate ? c.lastDate.getTime() : 0;
+  var cc = columnConfig.find(function(x) { return x.id === colKey; });
+  if (cc && (cc.type === 'ai' || cc.type === 'custom')) return getCellValue(c, cc) || '';
+  var v = c[colKey];
+  return v !== undefined && v !== null ? v : '';
+}
+
 function renderTable() {
   // If showing archived or flagged view, use those renderers instead
   if (showingArchived) { showArchivedView(); return; }
@@ -3387,24 +3399,14 @@ function renderTable() {
   data = applyAdvancedFilters(data);
 
   // Multi-sort (falls back to currentSort if no active sorts)
-  // Map sort column IDs to actual data properties
-  function getSortVal(c, colKey) {
-    if (colKey === 'company') return c.name || '';
-    if (colKey === 'contact') return c.contact || '';
-    if (colKey === 'companyType') return getCompanyType(c.domain);
-    var cc = columnConfig.find(function(x) { return x.id === colKey; });
-    if (cc && (cc.type === 'ai' || cc.type === 'custom')) return getCellValue(c, cc) || '';
-    return c[colKey];
-  }
   const sortsToApply = activeSorts.length > 0 ? activeSorts : [{ column: currentSort.key, direction: currentSort.asc ? 'asc' : 'desc' }];
   data.sort((a,b) => {
     for (const s of sortsToApply) {
-      let va = getSortVal(a, s.column);
-      let vb = getSortVal(b, s.column);
+      let va = _getSortVal(a, s.column);
+      let vb = _getSortVal(b, s.column);
       if (typeof va === 'string') { va = va.toLowerCase(); vb = (vb||'').toLowerCase(); }
-      const dir = s.direction === 'asc' ? 1 : -1;
-      if (va < vb) return -1 * dir;
-      if (va > vb) return 1 * dir;
+      if (va < vb) return s.direction === 'asc' ? -1 : 1;
+      if (va > vb) return s.direction === 'asc' ? 1 : -1;
     }
     return 0;
   });
@@ -3694,7 +3696,9 @@ function applyAdvancedFilters(data) {
   return data.filter(function(c) {
     return validFilters.every(function(f) {
       var rawVal;
-      if (f.column === 'companyType') rawVal = getCompanyType(c.domain);
+      if (f.column === 'company') rawVal = c.name;
+      else if (f.column === 'contact') rawVal = c.contact;
+      else if (f.column === 'companyType') rawVal = getCompanyType(c.domain);
       else if (f.column === 'domain') rawVal = c.domain;
       else rawVal = c[f.column];
       if (rawVal === undefined || rawVal === null) rawVal = '';
