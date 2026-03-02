@@ -1990,6 +1990,31 @@ async function saveToCloud() {
   try {
     const token = await getCloudToken();
     if (!token) return;
+
+    // Safety check: don't overwrite a larger cloud backup with much smaller local data.
+    // This prevents a broken deployment from wiping a good backup.
+    try {
+      const checkResp = await fetch(
+        'https://graph.microsoft.com/v1.0/me/drive/special/approot:/' + CLOUD_SYNC_FILE,
+        { headers: { 'Authorization': 'Bearer ' + token } }
+      );
+      if (checkResp.ok) {
+        const cloudMeta = await checkResp.json();
+        const cloudSize = cloudMeta.size || 0;
+        const localDomainCount = Object.keys(domainMap).length;
+        const localBlockedCount = blockedDomains.size;
+        // If cloud file is >100KB and local has very few domains and no blocked domains,
+        // something is wrong — don't overwrite.
+        if (cloudSize > 100000 && localDomainCount < 50 && localBlockedCount === 0) {
+          console.warn('Cloud sync: BLOCKED — local data looks incomplete (' + localDomainCount + ' domains, 0 blocked) vs cloud file (' + Math.round(cloudSize/1024) + ' KB). Refusing to overwrite good backup.');
+          return;
+        }
+      }
+    } catch(checkErr) {
+      // If the safety check itself fails, proceed with save anyway
+      console.warn('Cloud sync: safety check failed, proceeding with save:', checkErr.message);
+    }
+
     const payload = gatherSyncPayload();
     const body = JSON.stringify(payload);
     const resp = await fetch(
@@ -1997,7 +2022,7 @@ async function saveToCloud() {
       { method: 'PUT', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: body }
     );
     if (resp.ok) {
-      console.log('Cloud sync saved successfully (' + Math.round(body.length/1024) + ' KB)');
+      console.log('Cloud sync saved successfully (' + Math.round(body.length/1024) + ' KB, ' + Object.keys(domainMap).length + ' domains, ' + blockedDomains.size + ' blocked)');
     } else {
       console.warn('Cloud sync save failed:', resp.status, await resp.text());
     }
