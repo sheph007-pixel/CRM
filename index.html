@@ -2381,61 +2381,99 @@ function applyCloudDomainData(data) {
 
 // Manual cloud restore — user-triggered from Settings
 async function manualCloudRestore() {
-  if (!currentAccount) { alert('Please sign in first.'); return; }
+  if (!msalInstance) { alert('Please sign in first.'); return; }
   try {
     setSyncBadge('scanning', 'Restoring...');
-    // First try loading current version
-    let cloudData = await loadFromCloud();
-    if (!cloudData || !cloudData.domainData || Object.keys(cloudData.domainData).length === 0) {
-      // Try fetching version history from OneDrive
-      console.log('Cloud restore: current backup empty, checking version history...');
+
+    // Acquire token IMMEDIATELY from user click context (prevents popup blocking)
+    let token = null;
+    const tokenScopes = ['Files.ReadWrite.AppFolder'];
+    try {
+      if (currentAccount) {
+        token = (await msalInstance.acquireTokenSilent({ scopes: tokenScopes, account: currentAccount })).accessToken;
+      }
+    } catch(silentErr) {
+      console.warn('Cloud restore: silent token failed (' + (silentErr.errorCode || silentErr.message) + '), trying popup...');
+    }
+    if (!token) {
       try {
-        let token = await getCloudToken();
-        if (!token) try { token = await getAccessToken(); } catch(e) {}
-        if (token) {
-          // Get file metadata to find the item ID
-          const metaResp = await fetch(
-            'https://graph.microsoft.com/v1.0/me/drive/special/approot:/' + CLOUD_SYNC_FILE,
+        // Popup MUST happen in direct user-click context — do it right here
+        const popupResp = await msalInstance.acquireTokenPopup({ scopes: ['Mail.Read','Mail.Send','User.Read','Files.ReadWrite.AppFolder'] });
+        token = popupResp.accessToken;
+        currentAccount = popupResp.account;
+      } catch(popupErr) {
+        console.error('Cloud restore: popup token failed:', popupErr.errorCode || popupErr.message);
+        setSyncBadge('error', 'Auth Failed');
+        alert('Could not get authorization token. Please allow the popup or try signing out and back in.');
+        return;
+      }
+    }
+
+    // Fetch current cloud backup
+    console.log('Cloud restore: fetching backup from OneDrive...');
+    let cloudData = null;
+    const resp = await fetch(
+      'https://graph.microsoft.com/v1.0/me/drive/special/approot:/' + CLOUD_SYNC_FILE + ':/content',
+      { headers: { 'Authorization': 'Bearer ' + token } }
+    );
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.domainData && Object.keys(data.domainData).length > 0) {
+        cloudData = data;
+        console.log('Cloud restore: current backup has ' + Object.keys(data.domainData).length + ' domains');
+      } else {
+        console.log('Cloud restore: current backup exists but has 0 domains');
+      }
+    } else if (resp.status === 404) {
+      console.log('Cloud restore: no backup file found');
+    } else {
+      console.warn('Cloud restore: HTTP ' + resp.status);
+    }
+
+    // If current backup is empty, try OneDrive version history
+    if (!cloudData) {
+      console.log('Cloud restore: checking version history...');
+      try {
+        const metaResp = await fetch(
+          'https://graph.microsoft.com/v1.0/me/drive/special/approot:/' + CLOUD_SYNC_FILE,
+          { headers: { 'Authorization': 'Bearer ' + token } }
+        );
+        if (metaResp.ok) {
+          const fileMeta = await metaResp.json();
+          const versionsResp = await fetch(
+            'https://graph.microsoft.com/v1.0/me/drive/items/' + fileMeta.id + '/versions',
             { headers: { 'Authorization': 'Bearer ' + token } }
           );
-          if (metaResp.ok) {
-            const fileMeta = await metaResp.json();
-            const itemId = fileMeta.id;
-            // Fetch version history
-            const versionsResp = await fetch(
-              'https://graph.microsoft.com/v1.0/me/drive/items/' + itemId + '/versions',
-              { headers: { 'Authorization': 'Bearer ' + token } }
-            );
-            if (versionsResp.ok) {
-              const versions = await versionsResp.json();
-              console.log('Cloud restore: found ' + (versions.value || []).length + ' versions');
-              // Try each previous version until we find one with data
-              for (const ver of (versions.value || []).slice(0, 10)) {
-                try {
-                  const verResp = await fetch(
-                    'https://graph.microsoft.com/v1.0/me/drive/items/' + itemId + '/versions/' + ver.id + '/content',
-                    { headers: { 'Authorization': 'Bearer ' + token } }
-                  );
-                  if (verResp.ok) {
-                    const verData = await verResp.json();
-                    if (verData.domainData && Object.keys(verData.domainData).length > 0) {
-                      console.log('Cloud restore: found version ' + ver.id + ' from ' + (ver.lastModifiedDateTime || '?') + ' with ' + Object.keys(verData.domainData).length + ' domains');
-                      cloudData = verData;
-                      break;
-                    }
+          if (versionsResp.ok) {
+            const versions = await versionsResp.json();
+            console.log('Cloud restore: found ' + (versions.value || []).length + ' versions in history');
+            for (const ver of (versions.value || []).slice(0, 10)) {
+              try {
+                const verResp = await fetch(
+                  'https://graph.microsoft.com/v1.0/me/drive/items/' + fileMeta.id + '/versions/' + ver.id + '/content',
+                  { headers: { 'Authorization': 'Bearer ' + token } }
+                );
+                if (verResp.ok) {
+                  const verData = await verResp.json();
+                  if (verData.domainData && Object.keys(verData.domainData).length > 0) {
+                    console.log('Cloud restore: found v' + ver.id + ' from ' + (ver.lastModifiedDateTime || '?') + ' with ' + Object.keys(verData.domainData).length + ' domains');
+                    cloudData = verData;
+                    break;
                   }
-                } catch(ve) { console.warn('Cloud restore: version ' + ver.id + ' unreadable:', ve); }
-              }
+                }
+              } catch(ve) { console.warn('Cloud restore: version ' + ver.id + ' error:', ve); }
             }
           }
         }
-      } catch(vErr) { console.warn('Cloud restore: version history failed:', vErr); }
+      } catch(vErr) { console.warn('Cloud restore: version history error:', vErr); }
     }
-    if (!cloudData || !cloudData.domainData || Object.keys(cloudData.domainData).length === 0) {
+
+    if (!cloudData) {
       setSyncBadge('error', 'No Backup Found');
-      alert('No cloud backup found with data. You may need to run Sync Emails to re-scan your mailbox.');
+      alert('No cloud backup found with data.\n\nThis means either:\n1. The backup was never created, or\n2. All versions were overwritten.\n\nClick "Sync Emails" to re-scan your mailbox from scratch.');
       return;
     }
+
     // Apply the cloud data
     applyCloudSettings(cloudData);
     applyCloudDomainData(cloudData);
@@ -2452,7 +2490,7 @@ async function manualCloudRestore() {
   } catch(e) {
     console.error('Cloud restore error:', e);
     setSyncBadge('error', 'Restore Failed');
-    alert('Cloud restore failed: ' + (e.message || e) + '\n\nTry clicking Sync Emails to re-scan instead.');
+    alert('Cloud restore failed: ' + (e.message || e) + '\n\nTry signing out and back in, then click Restore again.');
   }
 }
 
