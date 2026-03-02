@@ -1904,7 +1904,10 @@ let cloudSyncTimer = null;
 const CLOUD_SYNC_FILE = 'kennion-crm-sync.json';
 
 async function getCloudToken() {
-  if (!msalInstance || !currentAccount) return null;
+  if (!msalInstance || !currentAccount) {
+    console.warn('Cloud sync: no MSAL instance or account — cannot get token');
+    return null;
+  }
   try {
     const resp = await msalInstance.acquireTokenSilent({
       scopes: ['Files.ReadWrite.AppFolder'],
@@ -1912,6 +1915,7 @@ async function getCloudToken() {
     });
     return resp.accessToken;
   } catch(e) {
+    console.warn('Cloud sync: silent token failed, trying popup...', e.errorCode || e.message);
     try {
       const resp = await msalInstance.acquireTokenPopup({
         scopes: ['Files.ReadWrite.AppFolder']
@@ -1919,7 +1923,7 @@ async function getCloudToken() {
       currentAccount = resp.account;
       return resp.accessToken;
     } catch(e2) {
-      console.warn('Cloud sync token failed:', e2);
+      console.warn('Cloud sync: popup token also failed — cloud sync unavailable:', e2.errorCode || e2.message);
       return null;
     }
   }
@@ -2005,15 +2009,19 @@ async function saveToCloud() {
 async function loadFromCloud() {
   try {
     const token = await getCloudToken();
-    if (!token) return null;
+    if (!token) { console.warn('Cloud load: no token available'); return null; }
     const resp = await fetch(
       'https://graph.microsoft.com/v1.0/me/drive/special/approot:/' + CLOUD_SYNC_FILE + ':/content',
       { headers: { 'Authorization': 'Bearer ' + token } }
     );
-    if (resp.status === 404) return null; // no cloud data yet
-    if (!resp.ok) { console.warn('Cloud load failed:', resp.status); return null; }
+    if (resp.status === 404) { console.log('Cloud load: no cloud backup file found (first time)'); return null; }
+    if (!resp.ok) { console.warn('Cloud load failed: HTTP ' + resp.status + ' ' + (await resp.text())); return null; }
     const data = await resp.json();
-    if (data.version && data.settings) return data;
+    if (data.version && data.settings) {
+      console.log('Cloud load: found backup v' + data.version + ' from ' + (data.syncedAt || 'unknown') + ' with ' + Object.keys(data.domainData || {}).length + ' domains');
+      return data;
+    }
+    console.warn('Cloud load: backup file exists but has invalid format');
     return null;
   } catch(e) {
     console.warn('Cloud load error:', e);
@@ -2899,13 +2907,22 @@ async function onSignedIn() {
     runEnrichment();
   }
 
-  // If no local data, try restoring from OneDrive cloud sync
-  if (!hasLocalData) {
-    try {
+  // Always try restoring from OneDrive cloud sync.
+  // If local data is missing or cloud has more data, merge cloud data in.
+  try {
+    const localDomainCount = Object.keys(domainMap).length;
+    if (!hasLocalData) {
       setSyncBadge('scanning', 'Restoring...');
       document.getElementById('lastSyncText').textContent = 'Checking cloud backup...';
-      const cloudData = await loadFromCloud();
-      if (cloudData && cloudData.domainData && Object.keys(cloudData.domainData).length > 0) {
+    }
+    console.log('Cloud sync: checking OneDrive backup (local domains: ' + localDomainCount + ')...');
+    const cloudData = await loadFromCloud();
+    if (cloudData && cloudData.domainData && Object.keys(cloudData.domainData).length > 0) {
+      const cloudDomainCount = Object.keys(cloudData.domainData).length;
+      console.log('Cloud sync: found ' + cloudDomainCount + ' domains in cloud backup');
+      // If cloud has more data than local, or local is empty, merge cloud data
+      if (cloudDomainCount > localDomainCount) {
+        console.log('Cloud sync: merging cloud data (cloud: ' + cloudDomainCount + ' > local: ' + localDomainCount + ')');
         applyCloudData(cloudData);
         hasLocalData = Object.keys(domainMap).length > 0;
         if (hasLocalData) {
@@ -2916,14 +2933,18 @@ async function onSignedIn() {
           updateLastSyncDisplay();
           resolveCompanyNames();
           runEnrichment();
-          // Also persist to local IndexedDB so it's cached locally too
+          // Persist merged data to local IndexedDB
           persistData();
-          console.log('Restored ' + Object.keys(domainMap).length + ' domains from cloud backup');
+          console.log('Cloud sync: restored ' + Object.keys(domainMap).length + ' domains from cloud backup');
         }
+      } else {
+        console.log('Cloud sync: local data is current (' + localDomainCount + ' domains), skipping cloud restore');
       }
-    } catch(e) {
-      console.warn('Cloud restore failed:', e);
+    } else {
+      console.log('Cloud sync: no cloud backup found');
     }
+  } catch(e) {
+    console.warn('Cloud restore failed:', e);
   }
 
   updateBlockedCount();
