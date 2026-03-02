@@ -3648,9 +3648,9 @@ function renderFilterRows() {
       });
       html += '</select>';
     } else if (col && col.type === 'number') {
-      html += '<input type="number" placeholder="Value" value="' + esc(f.value || '') + '" onchange="filterValueChanged(' + idx + ',this.value)" onkeyup="filterValueChanged(' + idx + ',this.value)">';
+      html += '<input type="number" placeholder="Value" value="' + esc(f.value || '') + '" oninput="filterValueChanged(' + idx + ',this.value)">';
     } else {
-      html += '<input type="text" placeholder="Value" value="' + esc(f.value || '') + '" onchange="filterValueChanged(' + idx + ',this.value)" onkeyup="filterValueChanged(' + idx + ',this.value)">';
+      html += '<input type="text" placeholder="Value" value="' + esc(f.value || '') + '" oninput="filterValueChanged(' + idx + ',this.value)">';
     }
     html += '<button class="filter-remove" onclick="removeFilterRow(' + idx + ')" title="Remove">&times;</button>';
     html += '</div>';
@@ -3663,14 +3663,18 @@ function filterColumnChanged(idx, colId) {
   var ops = getOpsForColumn(colId);
   activeFilters[idx].operator = ops[0].id;
   activeFilters[idx].value = '';
+  updateFilterBadge();
   renderFilterRows();
+  renderTable();
 }
 
 function filterOpChanged(idx, op) {
   activeFilters[idx].operator = op;
+  if (activeFilters[idx].value !== '') renderTable();
 }
 
 function filterValueChanged(idx, val) {
+  if (!activeFilters[idx]) return;
   activeFilters[idx].value = val;
   updateFilterBadge();
   renderTable();
@@ -3690,27 +3694,30 @@ function updateFilterBadge() {
   }
 }
 
+function _getFilterVal(c, colKey) {
+  if (colKey === 'company') return c.name || '';
+  if (colKey === 'contact') return c.contact || '';
+  if (colKey === 'companyType') return getCompanyType(c.domain);
+  if (colKey === 'domain') return c.domain || '';
+  return c[colKey] !== undefined && c[colKey] !== null ? c[colKey] : '';
+}
+
 function applyAdvancedFilters(data) {
   var validFilters = activeFilters.filter(function(f) { return f.value !== ''; });
   if (validFilters.length === 0) return data;
   return data.filter(function(c) {
     return validFilters.every(function(f) {
-      var rawVal;
-      if (f.column === 'company') rawVal = c.name;
-      else if (f.column === 'contact') rawVal = c.contact;
-      else if (f.column === 'companyType') rawVal = getCompanyType(c.domain);
-      else if (f.column === 'domain') rawVal = c.domain;
-      else rawVal = c[f.column];
-      if (rawVal === undefined || rawVal === null) rawVal = '';
-      var val = String(rawVal);
-      var fv = f.value;
+      var rawVal = _getFilterVal(c, f.column);
+      var val = String(rawVal).toLowerCase();
+      var fv = String(f.value);
+      var fvLower = fv.toLowerCase();
       switch (f.operator) {
-        case 'is': return val === fv;
-        case 'is_not': return val !== fv;
-        case 'contains': return val.toLowerCase().includes(fv.toLowerCase());
-        case 'not_contains': return !val.toLowerCase().includes(fv.toLowerCase());
-        case 'equals': return val.toLowerCase() === fv.toLowerCase();
-        case 'starts': return val.toLowerCase().startsWith(fv.toLowerCase());
+        case 'is': return val === fvLower;
+        case 'is_not': return val !== fvLower;
+        case 'contains': return val.indexOf(fvLower) >= 0;
+        case 'not_contains': return val.indexOf(fvLower) < 0;
+        case 'equals': return val === fvLower;
+        case 'starts': return val.indexOf(fvLower) === 0;
         case 'gte': return Number(rawVal) >= Number(fv);
         case 'lte': return Number(rawVal) <= Number(fv);
         case 'eq': return Number(rawVal) === Number(fv);
