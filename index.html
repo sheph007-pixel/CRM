@@ -205,6 +205,12 @@ th.col-check,td.col-check{width:40px;text-align:center;padding:10px 8px 10px 14p
 .badge-cold{background:var(--blue-bg);color:var(--blue)}
 .badge-existing{background:rgba(128,90,213,.08);color:#8050d5}
 .badge-old{background:rgba(95,99,104,.08);color:var(--text2)}
+.type-dropdown{-webkit-appearance:none;appearance:none;border:none;border-radius:12px;padding:4px 24px 4px 10px;font-size:11px;font-weight:600;font-family:inherit;cursor:pointer;outline:none;background-image:url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23666' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;transition:.15s}
+.type-dropdown.badge-warm{background-color:var(--orange-bg);color:var(--orange)}
+.type-dropdown.badge-hot{background-color:var(--green-bg);color:var(--green)}
+.type-dropdown.badge-cold{background-color:var(--blue-bg);color:var(--blue)}
+.type-dropdown:hover{opacity:.85}
+.type-dropdown:focus{box-shadow:0 0 0 2px rgba(26,115,232,.2)}
 
 .email-bar{display:flex;align-items:center;gap:6px;font-size:12px}
 .bar-track{width:80px;height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;display:flex}
@@ -774,16 +780,16 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
           <span class="stat-value" id="statCompanies">0</span>
         </div>
         <div class="stat-card">
-          <span class="stat-label">Emails Sent</span>
-          <span class="stat-value" id="statSent">0</span>
+          <span class="stat-label">Leads</span>
+          <span class="stat-value" id="statLeads">0</span>
         </div>
         <div class="stat-card">
-          <span class="stat-label">Emails Received</span>
-          <span class="stat-value" id="statRecv">0</span>
+          <span class="stat-label">Existing Clients</span>
+          <span class="stat-value" id="statExisting">0</span>
         </div>
         <div class="stat-card">
-          <span class="stat-label">Top Contacts</span>
-          <span class="stat-value" id="statContacts">0</span>
+          <span class="stat-label">Old Clients</span>
+          <span class="stat-value" id="statOld">0</span>
         </div>
       </div>
 
@@ -3234,7 +3240,13 @@ function buildCellHTML(col, c, color) {
       case 'status':
         return '<span class="badge ' + STATUS_CLASS[c.status] + '">' + c.status + '</span>';
       case 'companyType':
-        return '<span class="badge badge-warm">Lead</span>';
+        var ct = getCompanyType(c.domain);
+        var ctClass = ct === 'Current Client' ? 'badge-hot' : ct === 'Old Client' ? 'badge-cold' : 'badge-warm';
+        return '<select class="type-dropdown ' + ctClass + '" onchange="setCompanyType(\'' + esc(c.domain) + '\',this.value)" onclick="event.stopPropagation()">'
+          + '<option value="Lead"' + (ct === 'Lead' ? ' selected' : '') + '>Lead</option>'
+          + '<option value="Current Client"' + (ct === 'Current Client' ? ' selected' : '') + '>Current Client</option>'
+          + '<option value="Old Client"' + (ct === 'Old Client' ? ' selected' : '') + '>Old Client</option>'
+          + '</select>';
       case 'score':
         var scoreColor = c.score >= 75 ? '#1e8e3e' : c.score >= 50 ? '#e8710a' : '#d93025';
         return '<div class="ai-score"><div class="score-num" style="color:' + scoreColor + ';border-color:' + scoreColor + '">' + c.score + '</div></div>';
@@ -3362,10 +3374,18 @@ function renderTable() {
 function updateStats() {
   // Exclude archived, flagged, and blocked from main stats
   const active = companies.filter(c => !archivedCompanies.has(c.domain) && !flaggedCompanies.has(c.domain) && !blockedDomains.has(c.domain));
-  document.getElementById('statCompanies').textContent = active.length;
-  document.getElementById('statSent').textContent = active.reduce((s,c) => s + c.sent, 0).toLocaleString();
-  document.getElementById('statRecv').textContent = active.reduce((s,c) => s + c.received, 0).toLocaleString();
-  document.getElementById('statContacts').textContent = active.reduce((s,c) => s + (c.allContacts?.length || 1), 0).toLocaleString();
+  document.getElementById('statCompanies').textContent = active.length.toLocaleString();
+  // Count by company type
+  let leads = 0, existing = 0, old = 0;
+  active.forEach(c => {
+    const t = getCompanyType(c.domain);
+    if (t === 'Current Client') existing++;
+    else if (t === 'Old Client') old++;
+    else leads++;
+  });
+  document.getElementById('statLeads').textContent = leads.toLocaleString();
+  document.getElementById('statExisting').textContent = existing.toLocaleString();
+  document.getElementById('statOld').textContent = old.toLocaleString();
   // Update segment counts in sidebar
   const hot = active.filter(c => c.status === 'Hot').length;
   const warm = active.filter(c => c.status === 'Warm').length;
@@ -3378,7 +3398,7 @@ function updateStats() {
 }
 
 function updateTypeCounts() {
-  // All companies are leads — no type counts needed
+  updateStats();
 }
 
 function setViewTitle(title, showDashboard) {
@@ -3420,7 +3440,7 @@ function filterByType(type, el) {
     e.classList.remove('active');
   });
   if (el) el.classList.add('active');
-  var titles = { all: 'All Types', Lead: 'Leads' };
+  var titles = { all: 'All Types', Lead: 'Leads', 'Current Client': 'Existing Clients', 'Old Client': 'Old Clients' };
   setViewTitle(titles[type] || type, false);
   clearSelection();
   renderTable();
