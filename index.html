@@ -3387,20 +3387,20 @@ function renderTable() {
   data = applyAdvancedFilters(data);
 
   // Multi-sort (falls back to currentSort if no active sorts)
+  // Map sort column IDs to actual data properties
+  function getSortVal(c, colKey) {
+    if (colKey === 'company') return c.name || '';
+    if (colKey === 'contact') return c.contact || '';
+    if (colKey === 'companyType') return getCompanyType(c.domain);
+    var cc = columnConfig.find(function(x) { return x.id === colKey; });
+    if (cc && (cc.type === 'ai' || cc.type === 'custom')) return getCellValue(c, cc) || '';
+    return c[colKey];
+  }
   const sortsToApply = activeSorts.length > 0 ? activeSorts : [{ column: currentSort.key, direction: currentSort.asc ? 'asc' : 'desc' }];
   data.sort((a,b) => {
     for (const s of sortsToApply) {
-      let va, vb;
-      const col = columnConfig.find(c => c.id === s.column);
-      if (col && (col.type === 'ai' || col.type === 'custom')) {
-        va = getCellValue(a, col) || '';
-        vb = getCellValue(b, col) || '';
-      } else if (s.column === 'companyType') {
-        va = getCompanyType(a.domain);
-        vb = getCompanyType(b.domain);
-      } else {
-        va = a[s.column]; vb = b[s.column];
-      }
+      let va = getSortVal(a, s.column);
+      let vb = getSortVal(b, s.column);
       if (typeof va === 'string') { va = va.toLowerCase(); vb = (vb||'').toLowerCase(); }
       const dir = s.direction === 'asc' ? 1 : -1;
       if (va < vb) return -1 * dir;
