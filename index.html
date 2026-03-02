@@ -1805,12 +1805,6 @@ function loadBlockedDomains() {
   try {
     const raw = localStorage.getItem('relateflow_blocked_domains');
     blockedDomains = raw ? new Set(JSON.parse(raw)) : new Set();
-    // One-time fix: if blocked list is corrupted (>500 = basically all domains), clear it
-    if (blockedDomains.size > 500) {
-      console.warn('Blocked domains list corrupted (' + blockedDomains.size + ' entries) — clearing');
-      blockedDomains = new Set();
-      localStorage.removeItem('relateflow_blocked_domains');
-    }
   } catch(e) { blockedDomains = new Set(); }
 }
 
@@ -2160,7 +2154,7 @@ async function getCloudToken() {
 function gatherSyncPayload() {
   // Collect all localStorage settings
   const settings = {
-    blocked_domains: blockedDomains.size <= 500 ? [...blockedDomains] : [],
+    blocked_domains: [...blockedDomains],
     starred_contacts: starredContacts,
     starred_companies: [...starredCompanies],
     archived_companies: [...archivedCompanies],
@@ -2287,15 +2281,9 @@ function applyCloudSettings(data) {
   const s = data.settings;
   if (!s) return;
   if (s.blocked_domains && s.blocked_domains.length > 0) {
-    // Sanity check: if cloud has an absurd number of blocked domains (>500),
-    // the list is likely corrupted — skip it to avoid hiding all companies
-    if (s.blocked_domains.length > 500) {
-      console.warn('Cloud sync: ignoring blocked_domains — list looks corrupted (' + s.blocked_domains.length + ' entries)');
-    } else {
-      for (const d of s.blocked_domains) blockedDomains.add(d);
-      saveBlockedDomains();
-      console.log('Cloud sync: restored ' + s.blocked_domains.length + ' blocked domains');
-    }
+    for (const d of s.blocked_domains) blockedDomains.add(d);
+    saveBlockedDomains();
+    console.log('Cloud sync: restored ' + s.blocked_domains.length + ' blocked domains');
   }
   if (s.starred_contacts && Object.keys(s.starred_contacts).length > 0) {
     Object.assign(starredContacts, s.starred_contacts);
