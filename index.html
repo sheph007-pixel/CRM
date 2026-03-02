@@ -249,6 +249,36 @@ th.col-check,td.col-check{width:40px;text-align:center;padding:10px 8px 10px 14p
 .col-mgr-presets{padding:4px 16px;display:flex;flex-wrap:wrap;gap:6px}
 .col-preset-chip{padding:4px 10px;border-radius:16px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text);transition:.15s}
 .col-preset-chip:hover{border-color:var(--accent);color:var(--accent)}
+/* ── Close.com-style Toolbar Buttons ── */
+.tb-btn{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;font-size:12px;font-weight:500;font-family:inherit;color:var(--text2);background:var(--surface);border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:.15s;white-space:nowrap;position:relative}
+.tb-btn:hover{border-color:var(--accent);color:var(--accent)}
+.tb-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(26,115,232,.06)}
+.tb-btn svg{width:14px;height:14px;flex-shrink:0}
+.tb-btn .tb-badge{background:var(--accent);color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:1px 6px;margin-left:2px}
+/* Filter/Sort/Columns dropdown panels */
+.tb-panel{position:absolute;top:calc(100% + 6px);left:0;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.18);min-width:320px;max-height:420px;overflow-y:auto;z-index:150;display:none;padding:8px 0}
+.tb-panel.open{display:block}
+.tb-panel.right{left:auto;right:0}
+.tb-panel-header{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600}
+.tb-panel-header button{background:none;border:none;color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;padding:2px 8px}
+.tb-panel-header button:hover{text-decoration:underline}
+/* Filter rows */
+.filter-row{display:flex;align-items:center;gap:8px;padding:8px 14px}
+.filter-row select,.filter-row input{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;font-family:inherit;color:var(--text);outline:none;flex:1;min-width:0}
+.filter-row select:focus,.filter-row input:focus{border-color:var(--accent)}
+.filter-row .filter-remove{background:none;border:none;color:var(--red);font-size:16px;cursor:pointer;padding:0 4px;line-height:1;opacity:.6}
+.filter-row .filter-remove:hover{opacity:1}
+.filter-add-btn{display:flex;align-items:center;gap:6px;padding:8px 14px;font-size:12px;font-weight:600;color:var(--accent);cursor:pointer;border:none;background:none;width:100%;font-family:inherit}
+.filter-add-btn:hover{background:var(--surface2)}
+.filter-add-btn svg{width:14px;height:14px}
+/* Sort rows */
+.sort-row{display:flex;align-items:center;gap:8px;padding:8px 14px}
+.sort-row select{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;font-family:inherit;color:var(--text);outline:none;flex:1;min-width:0}
+.sort-row select:focus{border-color:var(--accent)}
+.sort-row .sort-dir{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;cursor:pointer;color:var(--text);font-family:inherit}
+.sort-row .sort-dir:hover{border-color:var(--accent)}
+.sort-row .filter-remove{background:none;border:none;color:var(--red);font-size:16px;cursor:pointer;padding:0 4px;line-height:1;opacity:.6}
+.sort-row .filter-remove:hover{opacity:1}
 .col-rename-input{background:var(--surface2);border:1px solid var(--accent);border-radius:4px;padding:2px 6px;font-size:11px;font-family:inherit;color:var(--text);outline:none;width:100%}
 td.custom-cell{cursor:text;position:relative;min-width:80px}
 td.custom-cell:hover{background:rgba(26,115,232,.04)}
@@ -660,7 +690,7 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
     <div style="border-bottom:1px solid #2a2a3d;margin:4px 0"></div>
     <div class="sidebar-item active" data-group="segment" onclick="filterByStatus('all',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-      All Leads
+      All Companies
       <span class="sidebar-badge" id="companyCount">0</span>
     </div>
     <div class="sidebar-section">AI Segments</div>
@@ -800,8 +830,52 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input type="text" id="searchInput" placeholder="Search companies, contacts...">
           </div>
+          <!-- Filter Button -->
+          <div style="position:relative">
+            <button class="tb-btn" id="filterTbBtn" onclick="toggleFilterPanel()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+              Filter <span class="tb-badge" id="filterBadge" style="display:none">0</span>
+            </button>
+            <div class="tb-panel" id="filterPanel">
+              <div class="tb-panel-header">
+                <span>Filters</span>
+                <button onclick="clearAllFilters()">Clear all</button>
+              </div>
+              <div id="filterRows"></div>
+              <button class="filter-add-btn" onclick="addFilterRow()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Add filter
+              </button>
+            </div>
+          </div>
+          <!-- Sort Button -->
+          <div style="position:relative">
+            <button class="tb-btn" id="sortTbBtn" onclick="toggleSortPanel()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+              Sort <span class="tb-badge" id="sortBadge" style="display:none">0</span>
+            </button>
+            <div class="tb-panel" id="sortPanel">
+              <div class="tb-panel-header">
+                <span>Sort</span>
+                <button onclick="clearAllSorts()">Clear all</button>
+              </div>
+              <div id="sortRows"></div>
+              <button class="filter-add-btn" onclick="addSortRow()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Add sort
+              </button>
+            </div>
+          </div>
         </div>
         <div class="toolbar-right">
+          <!-- Columns Button -->
+          <div class="col-mgr-wrap">
+            <button class="tb-btn" onclick="toggleColumnManager()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+              Columns
+            </button>
+            <div class="col-mgr-drop" id="colMgrDrop"></div>
+          </div>
         </div>
       </div>
 
@@ -1223,6 +1297,8 @@ let currentSort = {key:'sent',asc:false};
 let currentFilter = 'all';
 let currentTypeFilter = 'all';
 let companyTypes = {}; // { "domain": "Lead" } — all companies are leads
+let activeFilters = []; // [{ column, operator, value }]
+let activeSorts = [];   // [{ column, direction:'asc'|'desc' }]
 let msalInstance = null;
 let currentAccount = null;
 let userEmail = '';
@@ -3290,6 +3366,10 @@ function renderTable() {
   if (currentFilter !== 'all') {
     data = data.filter(c => c.status === currentFilter);
   }
+  // Type filter from sidebar
+  if (currentTypeFilter !== 'all') {
+    data = data.filter(c => getCompanyType(c.domain) === currentTypeFilter);
+  }
   const q = (document.getElementById('searchInput').value || '').toLowerCase();
   if (q) data = data.filter(c => {
     if (c.name.toLowerCase().includes(q) || c.contact.toLowerCase().includes(q) || c.domain.toLowerCase().includes(q)) return true;
@@ -3303,23 +3383,29 @@ function renderTable() {
     return false;
   });
 
-  const {key, asc} = currentSort;
+  // Advanced toolbar filters
+  data = applyAdvancedFilters(data);
+
+  // Multi-sort (falls back to currentSort if no active sorts)
+  const sortsToApply = activeSorts.length > 0 ? activeSorts : [{ column: currentSort.key, direction: currentSort.asc ? 'asc' : 'desc' }];
   data.sort((a,b) => {
-    let va, vb;
-    // Check if sorting by a custom/ai column
-    const col = columnConfig.find(c => c.id === key);
-    if (col && (col.type === 'ai' || col.type === 'custom')) {
-      va = getCellValue(a, col) || '';
-      vb = getCellValue(b, col) || '';
-    } else if (key === 'companyType') {
-      va = getCompanyType(a.domain);
-      vb = getCompanyType(b.domain);
-    } else {
-      va = a[key]; vb = b[key];
+    for (const s of sortsToApply) {
+      let va, vb;
+      const col = columnConfig.find(c => c.id === s.column);
+      if (col && (col.type === 'ai' || col.type === 'custom')) {
+        va = getCellValue(a, col) || '';
+        vb = getCellValue(b, col) || '';
+      } else if (s.column === 'companyType') {
+        va = getCompanyType(a.domain);
+        vb = getCompanyType(b.domain);
+      } else {
+        va = a[s.column]; vb = b[s.column];
+      }
+      if (typeof va === 'string') { va = va.toLowerCase(); vb = (vb||'').toLowerCase(); }
+      const dir = s.direction === 'asc' ? 1 : -1;
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
     }
-    if (typeof va === 'string') { va = va.toLowerCase(); vb = (vb||'').toLowerCase(); }
-    if (va < vb) return asc ? -1 : 1;
-    if (va > vb) return asc ? 1 : -1;
     return 0;
   });
 
@@ -3449,8 +3535,289 @@ function filterByType(type, el) {
 function sortTable(key) {
   if (currentSort.key === key) currentSort.asc = !currentSort.asc;
   else { currentSort.key = key; currentSort.asc = key === 'company' || key === 'contact'; }
+  // Also sync to activeSorts panel if open
+  activeSorts = [{ column: key, direction: currentSort.asc ? 'asc' : 'desc' }];
+  updateSortBadge();
   renderTable();
 }
+
+// ──────────────────────────────────────────────
+// FILTER PANEL (Close.com-style)
+// ──────────────────────────────────────────────
+var FILTER_COLUMNS = [
+  { id: 'status', label: 'Status', type: 'select', options: ['Hot','Warm','Cold'] },
+  { id: 'companyType', label: 'Type', type: 'select', options: ['Lead','Current Client','Old Client'] },
+  { id: 'score', label: 'AI Score', type: 'number' },
+  { id: 'sent', label: 'Emails Sent', type: 'number' },
+  { id: 'received', label: 'Emails Received', type: 'number' },
+  { id: 'company', label: 'Company Name', type: 'text' },
+  { id: 'contact', label: 'Contact', type: 'text' },
+  { id: 'domain', label: 'Domain', type: 'text' },
+];
+var FILTER_OPS_TEXT = [
+  { id: 'contains', label: 'contains' },
+  { id: 'not_contains', label: 'does not contain' },
+  { id: 'equals', label: 'equals' },
+  { id: 'starts', label: 'starts with' },
+];
+var FILTER_OPS_NUMBER = [
+  { id: 'gte', label: '>=' },
+  { id: 'lte', label: '<=' },
+  { id: 'eq', label: '=' },
+  { id: 'gt', label: '>' },
+  { id: 'lt', label: '<' },
+];
+var FILTER_OPS_SELECT = [
+  { id: 'is', label: 'is' },
+  { id: 'is_not', label: 'is not' },
+];
+
+function toggleFilterPanel() {
+  var p = document.getElementById('filterPanel');
+  var sp = document.getElementById('sortPanel');
+  if (sp.classList.contains('open')) sp.classList.remove('open');
+  p.classList.toggle('open');
+  if (p.classList.contains('open') && activeFilters.length === 0) addFilterRow();
+  renderFilterRows();
+}
+
+function toggleSortPanel() {
+  var p = document.getElementById('sortPanel');
+  var fp = document.getElementById('filterPanel');
+  if (fp.classList.contains('open')) fp.classList.remove('open');
+  p.classList.toggle('open');
+  if (p.classList.contains('open') && activeSorts.length === 0) addSortRow();
+  renderSortRows();
+}
+
+function getOpsForColumn(colId) {
+  var col = FILTER_COLUMNS.find(function(c) { return c.id === colId; });
+  if (!col) return FILTER_OPS_TEXT;
+  if (col.type === 'number') return FILTER_OPS_NUMBER;
+  if (col.type === 'select') return FILTER_OPS_SELECT;
+  return FILTER_OPS_TEXT;
+}
+
+function addFilterRow() {
+  activeFilters.push({ column: 'status', operator: 'is', value: '' });
+  renderFilterRows();
+}
+
+function removeFilterRow(idx) {
+  activeFilters.splice(idx, 1);
+  updateFilterBadge();
+  renderFilterRows();
+  renderTable();
+}
+
+function clearAllFilters() {
+  activeFilters = [];
+  updateFilterBadge();
+  renderFilterRows();
+  renderTable();
+}
+
+function renderFilterRows() {
+  var container = document.getElementById('filterRows');
+  if (!container) return;
+  var html = '';
+  activeFilters.forEach(function(f, idx) {
+    var col = FILTER_COLUMNS.find(function(c) { return c.id === f.column; });
+    var ops = getOpsForColumn(f.column);
+    // Column select
+    html += '<div class="filter-row">';
+    html += '<select onchange="filterColumnChanged(' + idx + ',this.value)">';
+    FILTER_COLUMNS.forEach(function(c) {
+      html += '<option value="' + c.id + '"' + (c.id === f.column ? ' selected' : '') + '>' + esc(c.label) + '</option>';
+    });
+    html += '</select>';
+    // Operator select
+    html += '<select onchange="filterOpChanged(' + idx + ',this.value)">';
+    ops.forEach(function(op) {
+      html += '<option value="' + op.id + '"' + (op.id === f.operator ? ' selected' : '') + '>' + esc(op.label) + '</option>';
+    });
+    html += '</select>';
+    // Value input
+    if (col && col.type === 'select') {
+      html += '<select onchange="filterValueChanged(' + idx + ',this.value)">';
+      html += '<option value="">Any</option>';
+      col.options.forEach(function(opt) {
+        html += '<option value="' + esc(opt) + '"' + (opt === f.value ? ' selected' : '') + '>' + esc(opt) + '</option>';
+      });
+      html += '</select>';
+    } else if (col && col.type === 'number') {
+      html += '<input type="number" placeholder="Value" value="' + esc(f.value || '') + '" onchange="filterValueChanged(' + idx + ',this.value)" onkeyup="filterValueChanged(' + idx + ',this.value)">';
+    } else {
+      html += '<input type="text" placeholder="Value" value="' + esc(f.value || '') + '" onchange="filterValueChanged(' + idx + ',this.value)" onkeyup="filterValueChanged(' + idx + ',this.value)">';
+    }
+    html += '<button class="filter-remove" onclick="removeFilterRow(' + idx + ')" title="Remove">&times;</button>';
+    html += '</div>';
+  });
+  container.innerHTML = html;
+}
+
+function filterColumnChanged(idx, colId) {
+  activeFilters[idx].column = colId;
+  var ops = getOpsForColumn(colId);
+  activeFilters[idx].operator = ops[0].id;
+  activeFilters[idx].value = '';
+  renderFilterRows();
+}
+
+function filterOpChanged(idx, op) {
+  activeFilters[idx].operator = op;
+}
+
+function filterValueChanged(idx, val) {
+  activeFilters[idx].value = val;
+  updateFilterBadge();
+  renderTable();
+}
+
+function updateFilterBadge() {
+  var count = activeFilters.filter(function(f) { return f.value !== ''; }).length;
+  var badge = document.getElementById('filterBadge');
+  var btn = document.getElementById('filterTbBtn');
+  if (count > 0) {
+    badge.textContent = count;
+    badge.style.display = '';
+    btn.classList.add('active');
+  } else {
+    badge.style.display = 'none';
+    btn.classList.remove('active');
+  }
+}
+
+function applyAdvancedFilters(data) {
+  var validFilters = activeFilters.filter(function(f) { return f.value !== ''; });
+  if (validFilters.length === 0) return data;
+  return data.filter(function(c) {
+    return validFilters.every(function(f) {
+      var rawVal;
+      if (f.column === 'companyType') rawVal = getCompanyType(c.domain);
+      else if (f.column === 'domain') rawVal = c.domain;
+      else rawVal = c[f.column];
+      if (rawVal === undefined || rawVal === null) rawVal = '';
+      var val = String(rawVal);
+      var fv = f.value;
+      switch (f.operator) {
+        case 'is': return val === fv;
+        case 'is_not': return val !== fv;
+        case 'contains': return val.toLowerCase().includes(fv.toLowerCase());
+        case 'not_contains': return !val.toLowerCase().includes(fv.toLowerCase());
+        case 'equals': return val.toLowerCase() === fv.toLowerCase();
+        case 'starts': return val.toLowerCase().startsWith(fv.toLowerCase());
+        case 'gte': return Number(rawVal) >= Number(fv);
+        case 'lte': return Number(rawVal) <= Number(fv);
+        case 'eq': return Number(rawVal) === Number(fv);
+        case 'gt': return Number(rawVal) > Number(fv);
+        case 'lt': return Number(rawVal) < Number(fv);
+        default: return true;
+      }
+    });
+  });
+}
+
+// ──────────────────────────────────────────────
+// SORT PANEL (Close.com-style)
+// ──────────────────────────────────────────────
+var SORT_COLUMNS = [
+  { id: 'company', label: 'Company Name' },
+  { id: 'contact', label: 'Contact' },
+  { id: 'sent', label: 'Emails Sent' },
+  { id: 'received', label: 'Emails Received' },
+  { id: 'status', label: 'Status' },
+  { id: 'companyType', label: 'Type' },
+  { id: 'score', label: 'AI Score' },
+  { id: 'lastActivity', label: 'Last Email' },
+];
+
+function addSortRow() {
+  var used = activeSorts.map(function(s) { return s.column; });
+  var available = SORT_COLUMNS.filter(function(c) { return used.indexOf(c.id) < 0; });
+  if (available.length === 0) return;
+  activeSorts.push({ column: available[0].id, direction: 'desc' });
+  updateSortBadge();
+  renderSortRows();
+  applyActiveSorts();
+}
+
+function removeSortRow(idx) {
+  activeSorts.splice(idx, 1);
+  updateSortBadge();
+  renderSortRows();
+  applyActiveSorts();
+}
+
+function clearAllSorts() {
+  activeSorts = [];
+  updateSortBadge();
+  renderSortRows();
+  renderTable();
+}
+
+function renderSortRows() {
+  var container = document.getElementById('sortRows');
+  if (!container) return;
+  var html = '';
+  activeSorts.forEach(function(s, idx) {
+    html += '<div class="sort-row">';
+    html += '<select onchange="sortColumnChanged(' + idx + ',this.value)">';
+    SORT_COLUMNS.forEach(function(c) {
+      html += '<option value="' + c.id + '"' + (c.id === s.column ? ' selected' : '') + '>' + esc(c.label) + '</option>';
+    });
+    html += '</select>';
+    html += '<button class="sort-dir" onclick="toggleSortDir(' + idx + ')">' + (s.direction === 'asc' ? 'A→Z' : 'Z→A') + '</button>';
+    html += '<button class="filter-remove" onclick="removeSortRow(' + idx + ')" title="Remove">&times;</button>';
+    html += '</div>';
+  });
+  container.innerHTML = html;
+}
+
+function sortColumnChanged(idx, col) {
+  activeSorts[idx].column = col;
+  applyActiveSorts();
+}
+
+function toggleSortDir(idx) {
+  activeSorts[idx].direction = activeSorts[idx].direction === 'asc' ? 'desc' : 'asc';
+  renderSortRows();
+  applyActiveSorts();
+}
+
+function updateSortBadge() {
+  var count = activeSorts.length;
+  var badge = document.getElementById('sortBadge');
+  var btn = document.getElementById('sortTbBtn');
+  if (count > 0) {
+    badge.textContent = count;
+    badge.style.display = '';
+    btn.classList.add('active');
+  } else {
+    badge.style.display = 'none';
+    btn.classList.remove('active');
+  }
+}
+
+function applyActiveSorts() {
+  if (activeSorts.length > 0) {
+    currentSort.key = activeSorts[0].column;
+    currentSort.asc = activeSorts[0].direction === 'asc';
+  }
+  renderTable();
+}
+
+// Close panels on outside click
+document.addEventListener('click', function(e) {
+  var fp = document.getElementById('filterPanel');
+  var sp = document.getElementById('sortPanel');
+  if (fp && fp.classList.contains('open') && !e.target.closest('#filterPanel') && !e.target.closest('#filterTbBtn')) {
+    fp.classList.remove('open');
+  }
+  if (sp && sp.classList.contains('open') && !e.target.closest('#sortPanel') && !e.target.closest('#sortTbBtn')) {
+    sp.classList.remove('open');
+  }
+});
 
 function toggleSidebar() {
   const sb = document.getElementById('sidebar');
@@ -3472,7 +3839,7 @@ function filterByStatus(status, el) {
   document.querySelectorAll('.sidebar-item').forEach(e => e.classList.remove('active'));
   document.querySelectorAll('.sidebar-item[data-group="segment"]').forEach(e => e.classList.remove('active'));
   if (el) el.classList.add('active');
-  var titles = { all: 'All Leads', Hot: 'Hot Leads (10+ emails received)', Warm: 'Warm Leads (1-9 emails received)', Cold: 'Cold Leads (no emails received)' };
+  var titles = { all: 'All Companies', Hot: 'Hot (10+ emails received)', Warm: 'Warm (1-9 emails received)', Cold: 'Cold (no emails received)' };
   setViewTitle(titles[status] || status, status === 'all');
   clearSelection();
   renderTable();
@@ -6522,10 +6889,10 @@ function generateAIReply(msg) {
   }
 
   // ── LEAD QUERIES ──
-  if (/\b(lead|company type|all leads)\b/i.test(lower) && !/hot|warm|cold|at risk/i.test(lower)) {
+  if (/\b(lead|company type|all leads|all companies)\b/i.test(lower) && !/hot|warm|cold|at risk/i.test(lower)) {
     const sorted = [...companies].sort((a,b) => b.score - a.score);
-    if (!sorted.length) return 'No leads yet.';
-    return _label(`All Leads (${sorted.length} total)`) + sorted.slice(0, 8).map(c => _companyCard(c)).join('');
+    if (!sorted.length) return 'No companies yet.';
+    return _label(`All Companies (${sorted.length} total)`) + sorted.slice(0, 8).map(c => _companyCard(c)).join('');
   }
 
   // ── BLOCKED DOMAINS ──
