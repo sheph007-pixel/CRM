@@ -421,16 +421,22 @@ tr:hover td{background:rgba(108,92,231,.04)}
       <ol>
         <li>Go to <strong>portal.azure.com</strong> &rarr; <strong>Microsoft Entra ID</strong> &rarr; <strong>App registrations</strong></li>
         <li>Click <strong>New registration</strong>, name it "RelateFlow CRM"</li>
+        <li>For <strong>Supported account types</strong>, select "Accounts in any organizational directory" (multi-tenant) or "Single tenant" if only for your org</li>
         <li>Set <strong>Redirect URI</strong> (SPA) to: <code id="redirectDisplay">https://sheph007-pixel.github.io/codex/</code></li>
-        <li>Under <strong>API permissions</strong>, add: <code>Mail.Read</code> (Delegated)</li>
+        <li>Under <strong>API permissions</strong>, add: <code>Mail.Read</code> and <code>User.Read</code> (Delegated)</li>
         <li>Click <strong>Grant admin consent</strong> (or have your admin do it)</li>
         <li>Copy the <strong>Application (client) ID</strong> and paste it below</li>
+        <li>If single-tenant, also copy your <strong>Directory (tenant) ID</strong> from the Overview page and enter it below</li>
       </ol>
     </div>
 
     <label>Application (Client) ID</label>
     <input type="text" id="clientIdInput" placeholder="e.g. 12345678-abcd-1234-abcd-123456789abc">
     <p class="help-text">This is stored only in your browser's localStorage. Nothing is sent to any server.</p>
+
+    <label style="margin-top:12px">Tenant ID <span style="font-weight:normal;color:var(--text2)">(optional)</span></label>
+    <input type="text" id="tenantIdInput" placeholder="common (default) or your-tenant-id">
+    <p class="help-text">Use your Directory (Tenant) ID if you get error AADSTS700016. Find it in Azure Portal &rarr; Microsoft Entra ID &rarr; Overview. Leave blank to use "common" (multi-tenant).</p>
 
     <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
       <label style="font-size:12px;color:var(--text2);margin-bottom:6px;display:block">Data Management</label>
@@ -587,6 +593,10 @@ function getClientId() {
   return localStorage.getItem('relateflow_client_id') || '';
 }
 
+function getTenantId() {
+  return localStorage.getItem('relateflow_tenant_id') || 'common';
+}
+
 async function initMSAL() {
   const clientId = getClientId();
   if (!clientId) return null;
@@ -597,10 +607,11 @@ async function initMSAL() {
     return null;
   }
 
+  const tenantId = getTenantId();
   const config = {
     auth: {
       clientId: clientId,
-      authority: 'https://login.microsoftonline.com/common',
+      authority: 'https://login.microsoftonline.com/' + tenantId,
       redirectUri: window.location.origin + window.location.pathname,
     },
     cache: {
@@ -648,7 +659,20 @@ async function signIn() {
       msalInstance.loginRedirect({ scopes: ['Mail.Read','User.Read'] });
       return;
     }
-    alert('Sign-in failed: ' + (e.errorCode || '') + ' — ' + (e.message || e));
+    // AADSTS700016: App not found in tenant directory
+    const errMsg = (e.message || e.toString() || '');
+    if (errMsg.indexOf('AADSTS700016') !== -1) {
+      alert('Login failed: Your Application (Client) ID was not found in the directory.\n\nTo fix this:\n1. Open Settings and verify your Client ID is correct\n2. Set your Tenant ID (found in Azure Portal → Microsoft Entra ID → Overview)\n3. Ensure the app registration\'s "Supported account types" matches your setup\n4. Make sure an admin has granted consent for the app');
+      openSettings();
+      return;
+    }
+    // AADSTS65001: User or admin has not consented
+    if (errMsg.indexOf('AADSTS65001') !== -1 || errMsg.indexOf('AADSTS50011') !== -1) {
+      alert('Login failed: Admin consent is required.\n\nAsk your Azure AD admin to grant consent for the app, or go to Azure Portal → App registrations → API permissions → Grant admin consent.');
+      openSettings();
+      return;
+    }
+    alert('Sign-in failed: ' + (e.errorCode || '') + ' — ' + errMsg);
   }
 }
 
@@ -1113,6 +1137,8 @@ function closeDetail() {
 function openSettings() {
   document.getElementById('settingsModal').classList.add('active');
   document.getElementById('clientIdInput').value = getClientId();
+  const storedTenant = localStorage.getItem('relateflow_tenant_id') || '';
+  document.getElementById('tenantIdInput').value = storedTenant;
   document.getElementById('redirectDisplay').textContent = window.location.origin + window.location.pathname;
 }
 
@@ -1126,7 +1152,16 @@ async function saveSettings() {
   if (!/^[a-f0-9-]{36}$/i.test(clientId)) {
     if (!confirm('That doesn\'t look like a standard Azure Client ID (should be a UUID). Save anyway?')) return;
   }
+  const tenantId = document.getElementById('tenantIdInput').value.trim();
+  if (tenantId && tenantId !== 'common' && !/^[a-f0-9-]{36}$/i.test(tenantId)) {
+    if (!confirm('That doesn\'t look like a standard Tenant ID (should be a UUID or "common"). Save anyway?')) return;
+  }
   localStorage.setItem('relateflow_client_id', clientId);
+  if (tenantId) {
+    localStorage.setItem('relateflow_tenant_id', tenantId);
+  } else {
+    localStorage.removeItem('relateflow_tenant_id');
+  }
   closeSettings();
   msalInstance = null;
   await initMSAL();
