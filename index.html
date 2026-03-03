@@ -4061,14 +4061,7 @@ function renderProposalsTable() {
   }
 
   var thead = document.getElementById('tableHead');
-  thead.innerHTML = '<tr>'
-    + '<th style="width:30px"><input type="checkbox" class="row-checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this.checked)"></th>'
-    + '<th onclick="sortTable(\'company\')" style="cursor:pointer">Company</th>'
-    + '<th onclick="sortTable(\'contact\')" style="cursor:pointer">Primary Contact</th>'
-    + '<th onclick="sortTable(\'lastActivity\')" style="cursor:pointer">Last Email</th>'
-    + '<th>Notes</th>'
-    + '<th style="width:175px">Stage</th>'
-    + '</tr>';
+  thead.innerHTML = '';
 
   var data = companies.filter(function(c) {
     return starredCompanies.has(c.domain) && !archivedCompanies.has(c.domain) && !flaggedCompanies.has(c.domain);
@@ -4083,78 +4076,97 @@ function renderProposalsTable() {
     });
   }
 
-  var sortKey = currentSort.key || 'company';
+  // Sort alphabetically within each group
   data.sort(function(a, b) {
-    var va, vb;
-    if (sortKey === 'company') { va = (a.name || '').toLowerCase(); vb = (b.name || '').toLowerCase(); }
-    else if (sortKey === 'contact') { va = (a.contact || '').toLowerCase(); vb = (b.contact || '').toLowerCase(); }
-    else if (sortKey === 'lastActivity') { va = a.lastDate ? a.lastDate.getTime() : 0; vb = b.lastDate ? b.lastDate.getTime() : 0; }
-    else { va = a.name.toLowerCase(); vb = b.name.toLowerCase(); }
-    if (va < vb) return currentSort.asc ? -1 : 1;
-    if (va > vb) return currentSort.asc ? 1 : -1;
+    var va = (a.name || '').toLowerCase();
+    var vb = (b.name || '').toLowerCase();
+    if (va < vb) return -1;
+    if (va > vb) return 1;
     return 0;
   });
 
   var tbody = document.getElementById('tableBody');
   if (data.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text2)">No proposals yet. Star a company to add it here.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:40px;color:var(--text2)">No proposals yet. Star a company to add it here.</td></tr>';
     updateViewTitleCount(0);
     return;
   }
 
-  var rows = [];
+  // Group data by stage in order: Proposal Due, Proposal Sent, Onboarding, No Stage
+  var stageOrder = ['Proposal Due', 'Proposal Sent', 'Onboarding', ''];
+  var stageLabels = { 'Proposal Due': 'Proposal Due', 'Proposal Sent': 'Proposal Sent', 'Onboarding': 'Onboarding', '': 'No Stage' };
+  var stageColors = { 'Proposal Due': '#d93025', 'Proposal Sent': '#e8710a', 'Onboarding': '#1e8e3e', '': 'var(--text2)' };
+  var stageBgs = { 'Proposal Due': 'rgba(217,48,37,.1)', 'Proposal Sent': 'rgba(232,113,10,.1)', 'Onboarding': 'rgba(30,142,62,.1)', '': 'transparent' };
+
+  var groups = {};
+  for (var g = 0; g < stageOrder.length; g++) groups[stageOrder[g]] = [];
   for (var i = 0; i < data.length; i++) {
-    var c = data[i];
-    var color = COLORS[c.id % COLORS.length];
-    var sel = selectedIds.has(c.id);
-    var dSafe = c.domain.replace(/'/g, "\\'");
-    var stage = proposalStages[c.domain] || '';
-    var stageDef = PROPOSAL_STAGES.find(function(s) { return s.value === stage; }) || PROPOSAL_STAGES[0];
-    var note = proposalNotes[c.domain] || '';
+    var stage = proposalStages[data[i].domain] || '';
+    if (!groups[stage]) groups[stage] = [];
+    groups[stage].push(data[i]);
+  }
 
-    var row = '<tr' + (sel ? ' class="row-selected"' : '') + ' data-id="' + c.id + '">';
-    row += '<td class="col-check"><input type="checkbox" class="row-checkbox"' + (sel ? ' checked' : '') + ' data-rid="' + c.id + '"></td>';
+  var rows = [];
+  for (var gi = 0; gi < stageOrder.length; gi++) {
+    var stageKey = stageOrder[gi];
+    var items = groups[stageKey];
+    if (items.length === 0) continue;
 
-    // Company
-    var isStarred = starredCompanies.has(c.domain);
-    var isFollowUpP = followUpCompanies.has(c.domain);
-    row += '<td><div class="company-cell">'
-      + '<button class="row-star' + (isStarred ? ' active' : '') + '" onclick="event.stopPropagation();toggleCompanyStar(\'' + dSafe + '\')" title="Remove from Proposals">&#9733;</button>'
-      + '<button class="row-flag' + (isFollowUpP ? ' active' : '') + '" onclick="event.stopPropagation();toggleFollowUp(\'' + dSafe + '\')" title="' + (isFollowUpP ? 'Remove from Follow Up' : 'Flag for Follow Up') + '"><svg viewBox="0 0 24 24" fill="' + (isFollowUpP ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></button>'
-      + '<div class="company-logo" style="background:' + color + '">' + companyLogoHTML(c.domain, color, c.name) + '</div>'
-      + '<div class="company-info"><span class="company-name">' + esc(c.name) + '</span><span class="company-domain">' + esc(c.domain) + '</span></div>'
-      + '</div></td>';
+    var sColor = stageColors[stageKey];
+    var sBg = stageBgs[stageKey];
+    var sLabel = stageLabels[stageKey];
 
-    // Primary Contact
-    var initials = c.contact ? c.contact.split(' ').map(function(n){return n[0]}).join('').substring(0,2) : '';
-    var ctTitle = getContactTitle(c.contactEmail || '');
-    row += '<td><div class="contact-cell"><div class="avatar" style="background:' + color + '">' + contactPhotoHTML(c.contactEmail || '', color, initials) + '</div><div><span class="contact-name">' + esc(c.contact) + '</span>' + (ctTitle ? '<div class="contact-title">' + esc(ctTitle) + '</div>' : '') + '</div></div></td>';
+    // Stage section header
+    rows.push('<tr class="proposal-stage-header" style="pointer-events:none">'
+      + '<td colspan="3" style="padding:16px 12px 8px 12px;border-bottom:2px solid ' + sColor + ';background:transparent">'
+      + '<div style="display:flex;align-items:center;gap:10px">'
+      + '<span style="display:inline-flex;align-items:center;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;letter-spacing:.3px;color:' + sColor + ';background:' + sBg + ';border:1px solid ' + sColor + '">' + sLabel + '</span>'
+      + '<span style="font-size:12px;color:var(--text2);font-weight:500">' + items.length + (items.length === 1 ? ' company' : ' companies') + '</span>'
+      + '</div></td></tr>');
 
-    // Last Email
-    row += '<td><span style="color:var(--text2)">' + esc(c.lastActivity) + '</span></td>';
+    for (var j = 0; j < items.length; j++) {
+      var c = items[j];
+      var color = COLORS[c.id % COLORS.length];
+      var sel = selectedIds.has(c.id);
+      var dSafe = c.domain.replace(/'/g, "\\'");
+      var curStage = proposalStages[c.domain] || '';
+      var stageDef = PROPOSAL_STAGES.find(function(s) { return s.value === curStage; }) || PROPOSAL_STAGES[0];
+      var note = proposalNotes[c.domain] || '';
 
-    // Notes — save on blur, stop propagation on click and keydown
-    row += '<td><input type="text" class="proposal-note-input" data-domain="' + esc(c.domain) + '" value="' + esc(note).replace(/"/g, '&quot;') + '" placeholder="Add a note..." '
-      + 'onclick="event.stopPropagation()" '
-      + 'onfocus="event.stopPropagation()" '
-      + 'onblur="setProposalNote(\'' + dSafe + '\',this.value)" '
-      + 'onkeydown="event.stopPropagation();if(event.key===\'Enter\'){this.blur()}" '
-      + 'style="width:100%;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;box-sizing:border-box">'
-      + '</td>';
+      var row = '<tr' + (sel ? ' class="row-selected"' : '') + ' data-id="' + c.id + '">';
+      row += '<td class="col-check" style="width:30px"><input type="checkbox" class="row-checkbox"' + (sel ? ' checked' : '') + ' data-rid="' + c.id + '"></td>';
 
-    // Stage
-    row += '<td><select class="proposal-stage" data-domain="' + esc(c.domain) + '" '
-      + 'onclick="event.stopPropagation()" '
-      + 'onchange="setProposalStage(\'' + dSafe + '\',this.value)" '
-      + 'style="width:100%;padding:6px 10px;border-radius:6px;font-size:12px;font-family:inherit;font-weight:600;outline:none;cursor:pointer;border:1px solid ' + stageDef.color + ';color:' + stageDef.color + ';background:' + stageDef.bg + '">';
-    for (var si = 0; si < PROPOSAL_STAGES.length; si++) {
-      var s = PROPOSAL_STAGES[si];
-      row += '<option value="' + s.value + '"' + (stage === s.value ? ' selected' : '') + '>' + s.label + '</option>';
+      // Company
+      var isStarred = starredCompanies.has(c.domain);
+      var isFollowUpP = followUpCompanies.has(c.domain);
+      row += '<td><div class="company-cell">'
+        + '<button class="row-star' + (isStarred ? ' active' : '') + '" onclick="event.stopPropagation();toggleCompanyStar(\'' + dSafe + '\')" title="Remove from Proposals">&#9733;</button>'
+        + '<button class="row-flag' + (isFollowUpP ? ' active' : '') + '" onclick="event.stopPropagation();toggleFollowUp(\'' + dSafe + '\')" title="' + (isFollowUpP ? 'Remove from Follow Up' : 'Flag for Follow Up') + '"><svg viewBox="0 0 24 24" fill="' + (isFollowUpP ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></button>'
+        + '<div class="company-logo" style="background:' + color + '">' + companyLogoHTML(c.domain, color, c.name) + '</div>'
+        + '<div class="company-info"><span class="company-name">' + esc(c.name) + '</span><span class="company-domain">' + esc(c.domain) + '</span></div>'
+        + '</div></td>';
+
+      // Notes + Stage combined cell
+      row += '<td style="width:40%"><div style="display:flex;gap:8px;align-items:center">'
+        + '<input type="text" class="proposal-note-input" data-domain="' + esc(c.domain) + '" value="' + esc(note).replace(/"/g, '&quot;') + '" placeholder="Add a note..." '
+        + 'onclick="event.stopPropagation()" '
+        + 'onfocus="event.stopPropagation()" '
+        + 'onblur="setProposalNote(\'' + dSafe + '\',this.value)" '
+        + 'onkeydown="event.stopPropagation();if(event.key===\'Enter\'){this.blur()}" '
+        + 'style="flex:1;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;box-sizing:border-box">'
+        + '<select class="proposal-stage" data-domain="' + esc(c.domain) + '" '
+        + 'onclick="event.stopPropagation()" '
+        + 'onchange="setProposalStage(\'' + dSafe + '\',this.value);renderTable()" '
+        + 'style="min-width:130px;padding:6px 10px;border-radius:6px;font-size:12px;font-family:inherit;font-weight:600;outline:none;cursor:pointer;border:1px solid ' + stageDef.color + ';color:' + stageDef.color + ';background:' + stageDef.bg + '">';
+      for (var si = 0; si < PROPOSAL_STAGES.length; si++) {
+        var s = PROPOSAL_STAGES[si];
+        row += '<option value="' + s.value + '"' + (curStage === s.value ? ' selected' : '') + '>' + s.label + '</option>';
+      }
+      row += '</select></div></td>';
+
+      row += '</tr>';
+      rows.push(row);
     }
-    row += '</select></td>';
-
-    row += '</tr>';
-    rows.push(row);
   }
 
   tbody.innerHTML = rows.join('');
