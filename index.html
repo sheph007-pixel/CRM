@@ -3852,7 +3852,7 @@ function filterByType(type, el) {
   });
   if (el) el.classList.add('active');
   var titles = { all: 'All Types', Lead: 'Leads', 'Current Client': 'Existing Clients', 'Old Client': 'Old Clients' };
-  setViewTitle(titles[type] || type, false);
+  setViewTitle(titles[type] || type, true);
   syncStatCardActive(type);
   clearSelection();
   renderTable();
@@ -3885,7 +3885,7 @@ function filterByStatCard(type, el) {
     if (e.textContent.trim().startsWith('All')) e.classList.add('active');
   });
   var titles = { all: 'All Companies', Lead: 'Leads', 'Current Client': 'Existing Clients', 'Old Client': 'Old Clients' };
-  setViewTitle(titles[type] || type, type === 'all');
+  setViewTitle(titles[type] || type, true);
   syncStatCardActive(type);
   clearSelection();
   renderTable();
