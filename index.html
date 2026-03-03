@@ -959,25 +959,39 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 7h3a5 5 0 010 10h-3m-6 0H6a5 5 0 010-10h3"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
             <h3>Connection</h3>
           </div>
-          <p class="settings-desc">Connect your Outlook by registering an Azure App. Your Client ID is stored only in your browser.</p>
-          <div class="settings-field">
-            <label>Application (Client) ID</label>
-            <div style="display:flex;gap:8px">
-              <input type="text" id="settingsClientIdInput" placeholder="e.g. 12345678-abcd-1234-abcd-123456789abc" style="flex:1">
-              <button class="btn btn-primary btn-sm" onclick="saveSettingsClientId()" style="white-space:nowrap">Save & Connect</button>
+          <!-- Connected state (shown when signed in) -->
+          <div id="settingsConnectedState" style="display:none">
+            <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(52,168,83,.08);border:1px solid rgba(52,168,83,.2);border-radius:8px">
+              <div style="width:8px;height:8px;border-radius:50%;background:#34a853;flex-shrink:0"></div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:13px;font-weight:600;color:var(--text)" id="settingsConnectedEmail"></div>
+                <div style="font-size:11px;color:#34a853;margin-top:2px">Connected to Exchange &middot; Synced</div>
+              </div>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#34a853" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
             </div>
           </div>
-          <details class="settings-details">
-            <summary>Setup Instructions</summary>
-            <ol class="settings-steps">
-              <li>Go to <strong>portal.azure.com</strong> &rarr; <strong>Microsoft Entra ID</strong> &rarr; <strong>App registrations</strong></li>
-              <li>Click <strong>New registration</strong>, name it "Kennion CRM"</li>
-              <li>Set <strong>Redirect URI</strong> (SPA) to: <code id="settingsRedirectDisplay"></code></li>
-              <li>Under <strong>API permissions</strong>, add: <code>Mail.Read</code>, <code>Mail.Send</code>, and <code>Files.ReadWrite.AppFolder</code> (Delegated)</li>
-              <li>Click <strong>Grant admin consent</strong> (or have your admin do it)</li>
-              <li>Copy the <strong>Application (client) ID</strong> and paste above</li>
-            </ol>
-          </details>
+          <!-- Setup state (shown when not connected) -->
+          <div id="settingsSetupState">
+            <p class="settings-desc">Connect your Outlook by registering an Azure App. Your Client ID is stored only in your browser.</p>
+            <div class="settings-field">
+              <label>Application (Client) ID</label>
+              <div style="display:flex;gap:8px">
+                <input type="text" id="settingsClientIdInput" placeholder="e.g. 12345678-abcd-1234-abcd-123456789abc" style="flex:1">
+                <button class="btn btn-primary btn-sm" onclick="saveSettingsClientId()" style="white-space:nowrap">Save & Connect</button>
+              </div>
+            </div>
+            <details class="settings-details">
+              <summary>Setup Instructions</summary>
+              <ol class="settings-steps">
+                <li>Go to <strong>portal.azure.com</strong> &rarr; <strong>Microsoft Entra ID</strong> &rarr; <strong>App registrations</strong></li>
+                <li>Click <strong>New registration</strong>, name it "Kennion CRM"</li>
+                <li>Set <strong>Redirect URI</strong> (SPA) to: <code id="settingsRedirectDisplay"></code></li>
+                <li>Under <strong>API permissions</strong>, add: <code>Mail.Read</code>, <code>Mail.Send</code>, and <code>Files.ReadWrite.AppFolder</code> (Delegated)</li>
+                <li>Click <strong>Grant admin consent</strong> (or have your admin do it)</li>
+                <li>Copy the <strong>Application (client) ID</strong> and paste above</li>
+              </ol>
+            </details>
+          </div>
         </div>
 
         <!-- BLOCKED DOMAINS -->
@@ -6066,10 +6080,19 @@ function showSettingsView() {
   document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
   document.getElementById('settingsNavItem').classList.add('active');
   // Populate fields
-  document.getElementById('settingsClientIdInput').value = getClientId();
-  document.getElementById('settingsRedirectDisplay').textContent = window.location.origin + window.location.pathname;
   document.getElementById('settingsSignatureInput').value = getEmailSignature();
   renderBlockedDomainsList();
+  // Show connected state or setup state
+  if (currentAccount) {
+    document.getElementById('settingsConnectedState').style.display = '';
+    document.getElementById('settingsSetupState').style.display = 'none';
+    document.getElementById('settingsConnectedEmail').textContent = userEmail || currentAccount.username || '';
+  } else {
+    document.getElementById('settingsConnectedState').style.display = 'none';
+    document.getElementById('settingsSetupState').style.display = '';
+    document.getElementById('settingsClientIdInput').value = getClientId();
+    document.getElementById('settingsRedirectDisplay').textContent = window.location.origin + window.location.pathname;
+  }
 }
 
 function hideSettingsView() {
