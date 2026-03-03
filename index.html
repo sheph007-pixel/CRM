@@ -507,9 +507,6 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
 .ai-chat-subtitle{font-size:11px;font-weight:400;color:var(--text2)}
 .ai-chat-clear,.ai-chat-close{background:none;border:none;cursor:pointer;color:var(--text2);padding:6px;border-radius:6px;display:grid;place-items:center;transition:.15s}
 .ai-chat-clear:hover,.ai-chat-close:hover{background:var(--surface2);color:var(--text)}
-.ai-chat-suggestions{display:flex;gap:6px;padding:10px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap;flex-shrink:0}
-.ai-chat-suggestions button{background:var(--surface2);border:1px solid var(--border);border-radius:18px;padding:5px 12px;font-size:11px;color:var(--text2);cursor:pointer;font-family:inherit;transition:.15s;white-space:nowrap}
-.ai-chat-suggestions button:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
 .ai-chat-messages{flex:1;padding:16px;display:flex;flex-direction:column;gap:12px;overflow-y:auto}
 .ai-msg{max-width:88%;padding:10px 14px;border-radius:14px;font-size:13px;line-height:1.6;word-break:break-word}
 .ai-msg.bot{background:var(--surface2);align-self:flex-start;border-bottom-left-radius:4px}
@@ -1013,6 +1010,36 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
           <div id="settingsBlockedDomainsList" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;max-height:200px;overflow-y:auto"></div>
         </div>
 
+        <!-- AI ASSISTANT -->
+        <div class="settings-card">
+          <div class="settings-card-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <h3>AI Assistant</h3>
+          </div>
+          <p class="settings-desc">Connect an AI model to power the Kennion AI chat. Your API key is stored locally and never sent to our servers.</p>
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+            <select id="settingsAIProvider" style="padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:inherit;outline:none" onchange="saveAISettings()">
+              <option value="openai">OpenAI (ChatGPT)</option>
+              <option value="anthropic">Anthropic (Claude)</option>
+            </select>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="password" id="settingsAIKey" placeholder="Paste your API key here..." style="flex:1;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+            <button class="btn btn-primary btn-sm" onclick="saveAIKeyFromSettings()">Save Key</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+            <span id="aiKeyStatus" style="font-size:12px;color:var(--text2)"></span>
+          </div>
+          <details class="settings-details" style="margin-top:8px">
+            <summary>How to get an API key</summary>
+            <ol class="settings-steps">
+              <li><b>OpenAI:</b> Go to <strong>platform.openai.com/api-keys</strong> &rarr; Create new secret key</li>
+              <li><b>Anthropic:</b> Go to <strong>console.anthropic.com/settings/keys</strong> &rarr; Create Key</li>
+              <li>Paste the key above and click <b>Save Key</b></li>
+            </ol>
+          </details>
+        </div>
+
         <!-- EMAIL SIGNATURE -->
         <div class="settings-card">
           <div class="settings-card-header">
@@ -1222,7 +1249,7 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
     <span class="ai-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></span>
     <div style="flex:1">
       <div style="display:flex;align-items:center;gap:8px"><span class="ai-chat-title">Kennion AI</span><span class="ai-chat-dot"></span></div>
-      <div class="ai-chat-subtitle">Ask anything about your CRM data</div>
+      <div class="ai-chat-subtitle">Your AI assistant with full CRM access</div>
     </div>
     <button class="ai-chat-clear" onclick="clearAIChat()" title="Clear chat">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
@@ -1231,19 +1258,11 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
   </div>
-  <div class="ai-chat-suggestions" id="aiSuggestions">
-    <button onclick="askAISuggestion('Who should I follow up with?')">Follow-ups</button>
-    <button onclick="askAISuggestion('Show me hot leads')">Hot Leads</button>
-    <button onclick="askAISuggestion('Show cold leads at risk')">At Risk</button>
-    <button onclick="askAISuggestion('Give me a pipeline summary')">Summary</button>
-    <button onclick="askAISuggestion('Search contacts at google')">Search</button>
-    <button onclick="askAISuggestion('Find companies in technology')">Industry</button>
-  </div>
   <div class="ai-chat-messages" id="aiMessages">
-    <div class="ai-msg bot">Hi! I can search your entire CRM — companies, contacts, emails, engagement scores, and enrichment data. Try asking me anything:<br><br>• <b>"Find contacts at Microsoft"</b><br>• <b>"Who has the highest engagement?"</b><br>• <b>"Show companies in healthcare"</b><br>• <b>"Search emails about proposal"</b><br>• <b>"Which leads went cold this month?"</b></div>
+    <div class="ai-msg bot">Hi! I'm your AI assistant with full access to your CRM data — companies, contacts, emails, scores, and more. Just talk to me like a person. Ask me anything!</div>
   </div>
   <div class="ai-chat-input">
-    <input type="text" id="aiInput" placeholder="Ask anything about your CRM..." onkeydown="if(event.key==='Enter')sendAI()">
+    <input type="text" id="aiInput" placeholder="Ask me anything..." onkeydown="if(event.key==='Enter')sendAI()">
     <button onclick="sendAI()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
   </div>
 </div>
@@ -6173,6 +6192,7 @@ function showSettingsView() {
   document.getElementById('settingsSignatureInput').value = getEmailSignature();
   renderBlockedDomainsList();
   updateBlockedSyncStatus();
+  loadAISettings();
   // Show connected state or setup state
   if (currentAccount) {
     document.getElementById('settingsConnectedState').style.display = '';
@@ -6955,9 +6975,38 @@ function updateInboxBadge() {
 }
 
 // ──────────────────────────────────────────────
-// AI CHAT — Full CRM Search & Intelligence
+// AI CHAT — Real AI Assistant with CRM Access
 // ──────────────────────────────────────────────
 let aiChatOpen = false;
+let aiConversation = []; // message history for context
+let aiStreaming = false;
+
+function getAIProvider() { return localStorage.getItem('kennion_ai_provider') || 'openai'; }
+function getAIKey() { return localStorage.getItem('kennion_ai_key') || ''; }
+function saveAISettings() {
+  const provider = document.getElementById('settingsAIProvider').value;
+  localStorage.setItem('kennion_ai_provider', provider);
+}
+function saveAIKeyFromSettings() {
+  const key = document.getElementById('settingsAIKey').value.trim();
+  if (!key) { alert('Please enter an API key.'); return; }
+  localStorage.setItem('kennion_ai_key', key);
+  document.getElementById('settingsAIKey').value = '';
+  const status = document.getElementById('aiKeyStatus');
+  status.textContent = '\u2713 API key saved securely in browser';
+  status.style.color = '#34a853';
+  setTimeout(function() { status.textContent = 'Key stored \u00b7 ' + getAIProvider().toUpperCase(); status.style.color = 'var(--text2)'; }, 3000);
+}
+function loadAISettings() {
+  const prov = document.getElementById('settingsAIProvider');
+  const status = document.getElementById('aiKeyStatus');
+  if (prov) prov.value = getAIProvider();
+  if (status) {
+    if (getAIKey()) { status.textContent = '\u2713 API key saved \u00b7 ' + (getAIProvider() === 'anthropic' ? 'Claude' : 'ChatGPT'); status.style.color = '#34a853'; }
+    else { status.textContent = 'No API key set — add one to enable AI chat'; status.style.color = 'var(--orange)'; }
+  }
+}
+
 function toggleAIChat() {
   aiChatOpen = !aiChatOpen;
   const win = document.getElementById('aiChatWindow');
@@ -6965,344 +7014,187 @@ function toggleAIChat() {
   if (aiChatOpen) {
     win.classList.add('open');
     fab.style.display = 'none';
-    setTimeout(() => document.getElementById('aiInput').focus(), 100);
+    setTimeout(function() { document.getElementById('aiInput').focus(); }, 100);
   } else {
     win.classList.remove('open');
     fab.style.display = 'grid';
   }
 }
 
-function askAISuggestion(question) {
-  document.getElementById('aiInput').value = question;
-  sendAI();
-}
-
 function clearAIChat() {
-  const msgs = document.getElementById('aiMessages');
-  msgs.innerHTML = `<div class="ai-msg bot">I can search your entire CRM — companies, contacts, emails, engagement scores, and enrichment data. Ask me anything.</div>`;
-  document.getElementById('aiSuggestions').style.display = 'flex';
+  aiConversation = [];
+  var msgs = document.getElementById('aiMessages');
+  msgs.innerHTML = '<div class="ai-msg bot">Chat cleared. Ask me anything!</div>';
 }
 
-function sendAI() {
-  const input = document.getElementById('aiInput');
-  const msg = input.value.trim();
-  if (!msg) return;
+// Build CRM context snapshot for the AI
+function buildCRMContext() {
+  var totalSent = 0, totalRecv = 0, totalContacts = 0;
+  companies.forEach(function(c) { totalSent += c.sent; totalRecv += c.received; totalContacts += (c.allContacts ? c.allContacts.length : 1); });
+  var hot = companies.filter(function(c) { return c.status === 'Hot'; });
+  var warm = companies.filter(function(c) { return c.status === 'Warm'; });
+  var cold = companies.filter(function(c) { return c.status === 'Cold'; });
+  var avgScore = companies.length ? Math.round(companies.reduce(function(s,c) { return s + c.score; }, 0) / companies.length) : 0;
+
+  var ctx = 'CRM OVERVIEW:\n';
+  ctx += '- ' + companies.length + ' companies, ' + totalContacts + ' contacts\n';
+  ctx += '- ' + totalSent + ' emails sent, ' + totalRecv + ' received\n';
+  ctx += '- Hot leads (10+ received): ' + hot.length + ', Warm (1-9 received): ' + warm.length + ', Cold (0 received): ' + cold.length + '\n';
+  ctx += '- Average AI score: ' + avgScore + '/99\n';
+  ctx += '- Blocked domains: ' + blockedDomains.size + '\n\n';
+
+  // Top 30 companies by score
+  var sorted = companies.slice().sort(function(a, b) { return b.score - a.score; }).slice(0, 30);
+  ctx += 'TOP COMPANIES (by AI score):\n';
+  sorted.forEach(function(c) {
+    var enr = enrichmentCache[c.domain] || {};
+    var line = c.name + ' (' + c.domain + ') — Score: ' + c.score + ', Status: ' + c.status;
+    line += ', Sent: ' + c.sent + ', Received: ' + c.received;
+    if (c.lastActivity) line += ', Last: ' + c.lastActivity;
+    line += ', Contact: ' + c.contact + ' <' + c.contactEmail + '>';
+    if (enr.industry) line += ', Industry: ' + enr.industry;
+    if (enr.city || enr.country) line += ', Location: ' + [enr.city, enr.state, enr.country].filter(Boolean).join(', ');
+    if (enr.employees) line += ', Employees: ' + enr.employees;
+    ctx += '  ' + line + '\n';
+    // Include all contacts for this company
+    if (c.allContacts && c.allContacts.length > 1) {
+      c.allContacts.forEach(function(ct) {
+        ctx += '    - ' + ct.name + ' <' + ct.email + '> Sent: ' + (ct.sentIds ? ct.sentIds.size : 0) + ' Recv: ' + (ct.receivedIds ? ct.receivedIds.size : 0) + '\n';
+      });
+    }
+  });
+
+  // Recent email subjects from timeline cache
+  var recentEmails = [];
+  for (var email in contactTimelineCache) {
+    var items = contactTimelineCache[email];
+    for (var i = 0; i < Math.min(items.length, 5); i++) {
+      recentEmails.push({ subject: items[i].subject, type: items[i].type, date: items[i].date, contact: email, preview: (items[i].preview || '').substring(0, 100) });
+    }
+  }
+  recentEmails.sort(function(a, b) { return new Date(b.date) - new Date(a.date); });
+  if (recentEmails.length > 0) {
+    ctx += '\nRECENT EMAILS (from loaded timelines):\n';
+    recentEmails.slice(0, 20).forEach(function(e) {
+      ctx += '  [' + e.type + '] ' + e.subject + ' — ' + e.contact + ' (' + new Date(e.date).toLocaleDateString() + ')';
+      if (e.preview) ctx += ' — ' + e.preview;
+      ctx += '\n';
+    });
+  }
+
+  return ctx;
+}
+
+async function sendAI() {
+  var input = document.getElementById('aiInput');
+  var msg = input.value.trim();
+  if (!msg || aiStreaming) return;
   input.value = '';
-  const msgs = document.getElementById('aiMessages');
-  // hide suggestions after first query
-  document.getElementById('aiSuggestions').style.display = 'none';
-  msgs.innerHTML += `<div class="ai-msg user">${esc(msg)}</div>`;
-  // show typing indicator
-  const typingId = 'typing-' + Date.now();
-  msgs.innerHTML += `<div class="ai-typing" id="${typingId}"><span></span><span></span><span></span></div>`;
-  msgs.scrollTop = msgs.scrollHeight;
-  setTimeout(() => {
-    const typing = document.getElementById(typingId);
-    if (typing) typing.remove();
-    msgs.innerHTML += `<div class="ai-msg bot">${generateAIReply(msg)}</div>`;
+  var msgs = document.getElementById('aiMessages');
+  msgs.innerHTML += '<div class="ai-msg user">' + esc(msg) + '</div>';
+
+  // Check for API key
+  var apiKey = getAIKey();
+  if (!apiKey) {
+    msgs.innerHTML += '<div class="ai-msg bot">Please add your AI API key in <b>Settings &rarr; AI Assistant</b> to enable chat. I need either an OpenAI or Anthropic key to work.</div>';
     msgs.scrollTop = msgs.scrollHeight;
-  }, 500);
+    return;
+  }
+
+  // Show typing indicator
+  var typingId = 'typing-' + Date.now();
+  msgs.innerHTML += '<div class="ai-typing" id="' + typingId + '"><span></span><span></span><span></span></div>';
+  msgs.scrollTop = msgs.scrollHeight;
+  aiStreaming = true;
+
+  // Build system prompt with CRM data
+  var systemPrompt = 'You are Kennion AI, an intelligent CRM assistant. You have access to the user\'s full CRM data below. '
+    + 'Answer questions conversationally, helpfully, and concisely. When the user asks about their data (companies, contacts, emails, leads, scores), '
+    + 'use the CRM data provided to give specific, accurate answers with names, numbers, and details. '
+    + 'You can also answer general questions, draft emails, give business advice, and help with strategy. '
+    + 'Format responses in plain text. Use line breaks for readability. Be direct and useful.\n\n'
+    + buildCRMContext();
+
+  // Add user message to conversation
+  aiConversation.push({ role: 'user', content: msg });
+
+  // Keep conversation manageable (last 20 messages)
+  if (aiConversation.length > 20) aiConversation = aiConversation.slice(-20);
+
+  var provider = getAIProvider();
+  try {
+    var reply = '';
+    if (provider === 'anthropic') {
+      reply = await callAnthropicAPI(apiKey, systemPrompt, aiConversation);
+    } else {
+      reply = await callOpenAIAPI(apiKey, systemPrompt, aiConversation);
+    }
+    aiConversation.push({ role: 'assistant', content: reply });
+    var typing = document.getElementById(typingId);
+    if (typing) typing.remove();
+    // Render with basic formatting (newlines to <br>, **bold**)
+    var formatted = esc(reply).replace(/\n/g, '<br>').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+    msgs.innerHTML += '<div class="ai-msg bot">' + formatted + '</div>';
+  } catch (e) {
+    var typing = document.getElementById(typingId);
+    if (typing) typing.remove();
+    var errMsg = e.message || 'Unknown error';
+    if (errMsg.includes('401') || errMsg.includes('invalid')) errMsg = 'Invalid API key. Check your key in Settings &rarr; AI Assistant.';
+    else if (errMsg.includes('429')) errMsg = 'Rate limited. Please wait a moment and try again.';
+    else if (errMsg.includes('insufficient_quota')) errMsg = 'API quota exceeded. Check your billing at the provider\'s dashboard.';
+    msgs.innerHTML += '<div class="ai-msg bot" style="color:var(--red)">Error: ' + esc(errMsg) + '</div>';
+    // Remove failed user message from history
+    aiConversation.pop();
+  }
+  aiStreaming = false;
+  msgs.scrollTop = msgs.scrollHeight;
 }
 
-function _card(html) { return `<div class="ai-result-card">${html}</div>`; }
-function _label(text) { return `<div class="ai-result-label">${text}</div>`; }
-function _companyCard(c) {
-  const enr = enrichmentCache[c.domain] || {};
-  let meta = [enr.industry, enr.city, enr.country].filter(Boolean).join(', ');
-  if (enr.employees) meta += (meta ? ' · ' : '') + enr.employees + ' employees';
-  return _card(
-    `<b>${esc(c.name)}</b> <span style="color:var(--text2)">(${esc(c.domain)})</span><br>`
-    + `${esc(c.contact)} · Score: <b>${c.score}</b> · ${c.status}<br>`
-    + `Sent: ${c.sent} · Received: ${c.received} · Last: ${c.lastActivity}`
-    + (meta ? `<br><span style="color:var(--text2)">${esc(meta)}</span>` : '')
-  );
-}
-function _contactCard(contact, domain) {
-  const ce = contactEnrichment[contact.email] || {};
-  let extra = ce.title ? esc(ce.title) : '';
-  return _card(
-    `<b>${esc(contact.name)}</b> &lt;${esc(contact.email)}&gt;<br>`
-    + `Sent: ${contact.sent} · Received: ${contact.received}`
-    + (contact.lastDate ? ` · Last: ${_timeAgo(contact.lastDate)}` : '')
-    + (extra ? `<br><span style="color:var(--text2)">${extra}</span>` : '')
-  );
-}
-function _timeAgo(d) {
-  if (!d) return 'N/A';
-  const date = d instanceof Date ? d : new Date(d);
-  const diff = Date.now() - date.getTime();
-  const days = Math.floor(diff / 86400000);
-  if (days === 0) return 'today';
-  if (days === 1) return 'yesterday';
-  if (days < 30) return days + ' days ago';
-  if (days < 365) return Math.floor(days / 30) + ' months ago';
-  return Math.floor(days / 365) + ' years ago';
+async function callOpenAIAPI(apiKey, systemPrompt, messages) {
+  var body = {
+    model: 'gpt-4o-mini',
+    messages: [{ role: 'system', content: systemPrompt }].concat(messages),
+    max_tokens: 1024,
+    temperature: 0.7
+  };
+  var resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+    body: JSON.stringify(body)
+  });
+  if (!resp.ok) {
+    var err = await resp.text();
+    try { err = JSON.parse(err).error.message; } catch(e) {}
+    throw new Error(err || ('API error ' + resp.status));
+  }
+  var data = await resp.json();
+  return data.choices[0].message.content;
 }
 
-function _searchAllContacts(query) {
-  const results = [];
-  for (const domain in domainMap) {
-    const dm = domainMap[domain];
-    for (const email in dm.contacts) {
-      const c = dm.contacts[email];
-      if (c.name.toLowerCase().includes(query) || email.includes(query)) {
-        results.push({...c, email, domain});
-      }
-    }
+async function callAnthropicAPI(apiKey, systemPrompt, messages) {
+  var body = {
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 1024,
+    system: systemPrompt,
+    messages: messages
+  };
+  var resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify(body)
+  });
+  if (!resp.ok) {
+    var err = await resp.text();
+    try { err = JSON.parse(err).error.message; } catch(e) {}
+    throw new Error(err || ('API error ' + resp.status));
   }
-  return results.sort((a, b) => (b.sent + b.received) - (a.sent + a.received));
-}
-
-function _searchTimeline(query) {
-  const results = [];
-  for (const email in contactTimelineCache) {
-    const items = contactTimelineCache[email];
-    for (const item of items) {
-      if ((item.subject && item.subject.toLowerCase().includes(query)) ||
-          (item.preview && item.preview.toLowerCase().includes(query))) {
-        results.push({...item, contactEmail: email});
-      }
-    }
-  }
-  return results.sort((a, b) => new Date(b.date) - new Date(a.date));
-}
-
-function generateAIReply(msg) {
-  const lower = msg.toLowerCase().trim();
-  if (!companies.length) return 'No CRM data loaded yet. Please sync your emails first, then I can search everything for you.';
-
-  // ── FOLLOW-UPS & REACH OUT ──
-  if (/follow.?up|followup|reach out|re-engage|reconnect/i.test(lower)) {
-    const targets = companies.filter(c => c.status === 'Cold' || c.status === 'Warm').sort((a,b) => b.score - a.score).slice(0, 7);
-    if (!targets.length) return 'All your leads look engaged! No immediate follow-ups needed right now.';
-    return _label('Recommended Follow-ups') + targets.map(c => _companyCard(c)).join('');
-  }
-
-  // ── HOT LEADS / TOP / BEST (10+ emails received) ──
-  if (/\b(hot|hottest)\b.*\b(lead|compan)|best.*(lead|engag|compan)|top.*(lead|engag|compan|score)|highest.*(score|engag)|most engaged/i.test(lower) || (lower.includes('hot') && lower.includes('lead'))) {
-    const hot = companies.filter(c => c.status === 'Hot').sort((a,b) => b.score - a.score).slice(0, 8);
-    if (!hot.length) return 'No hot leads yet. Keep emailing to build engagement!';
-    return _label(`Hot Leads — 10+ emails received (${companies.filter(c=>c.status==='Hot').length} total)`) + hot.map(c => _companyCard(c)).join('');
-  }
-
-  // ── COLD / AT RISK (0 emails received, outbound only) ──
-  if (/\bcold\b|at risk|losing|disengag|inactive|gone quiet|no reply|no response/i.test(lower)) {
-    const cold = companies.filter(c => c.status === 'Cold').sort((a,b) => a.score - b.score).slice(0, 8);
-    if (!cold.length) return 'No cold leads — all leads are engaged!';
-    return _label(`At Risk — Cold Leads, no emails received (${companies.filter(c=>c.status==='Cold').length} total)`) + cold.map(c => _companyCard(c)).join('');
-  }
-
-  // ── WARM LEADS (1-9 emails received) ──
-  if (/\bwarm\b/i.test(lower) && /lead|compan|list|show/i.test(lower)) {
-    const warm = companies.filter(c => c.status === 'Warm').sort((a,b) => b.score - a.score).slice(0, 8);
-    if (!warm.length) return 'No warm leads right now.';
-    return _label(`Warm Leads — 1-9 emails received (${companies.filter(c=>c.status==='Warm').length} total)`) + warm.map(c => _companyCard(c)).join('');
-  }
-
-  // ── PIPELINE SUMMARY / OVERVIEW / STATS ──
-  if (/summary|overview|stats|pipeline|dashboard|report|how.*(doing|look|going)|breakdown/i.test(lower)) {
-    const ts = companies.reduce((s,c) => s + c.sent, 0);
-    const tr = companies.reduce((s,c) => s + c.received, 0);
-    const hot = companies.filter(c => c.status === 'Hot');
-    const warm = companies.filter(c => c.status === 'Warm');
-    const cold = companies.filter(c => c.status === 'Cold');
-    const avgScore = companies.length ? Math.round(companies.reduce((s,c) => s + c.score, 0) / companies.length) : 0;
-    const totalContacts = companies.reduce((s,c) => s + (c.allContacts?.length || 1), 0);
-    return _label('Pipeline Summary')
-      + _card(
-        `<b>${companies.length}</b> leads · <b>${totalContacts}</b> contacts<br>`
-        + `<b>${ts.toLocaleString()}</b> sent · <b>${tr.toLocaleString()}</b> received · Avg score: <b>${avgScore}</b>`
-      )
-      + _card(
-        `🔴 Hot (10+ received): <b>${hot.length}</b> · 🟡 Warm (1-9 received): <b>${warm.length}</b> · 🔵 Cold (0 received): <b>${cold.length}</b>`
-      )
-      + (hot.length ? _label('Top Performers') + hot.sort((a,b)=>b.score-a.score).slice(0,3).map(c => _companyCard(c)).join('') : '');
-  }
-
-  // ── SEARCH CONTACTS ──
-  if (/\bcontact|who works|people at|person at|find.*@|search.*@/i.test(lower)) {
-    // extract search term — strip command words
-    const searchTerm = lower.replace(/\b(search|find|show|list|get|who|works|at|contacts?|people|person|for|me|the|all|in|from)\b/g, '').trim();
-    if (searchTerm) {
-      const results = _searchAllContacts(searchTerm);
-      if (results.length) {
-        return _label(`Contacts matching "${esc(searchTerm)}" (${results.length} found)`) + results.slice(0, 8).map(c => _contactCard(c, c.domain)).join('');
-      }
-    }
-    // also check if a company name matches
-    const companyMatch = companies.find(c => lower.includes(c.name.toLowerCase()) || lower.includes(c.domain.toLowerCase()));
-    if (companyMatch && companyMatch.allContacts?.length) {
-      return _label(`Contacts at ${esc(companyMatch.name)}`) + companyMatch.allContacts.slice(0, 10).map(c => _contactCard(c, companyMatch.domain)).join('');
-    }
-    return 'No contacts found matching that query. Try a name, email, or company domain.';
-  }
-
-  // ── SEARCH EMAILS / SUBJECTS ──
-  if (/email.*about|search.*email|find.*email|subject.*about|mail.*about|email.*mention|email.*contain/i.test(lower)) {
-    const searchTerm = lower.replace(/\b(search|find|show|list|get|emails?|about|subject|mail|mention|contain|containing|with|the|me|for|that|all)\b/g, '').trim();
-    if (searchTerm && Object.keys(contactTimelineCache).length) {
-      const results = _searchTimeline(searchTerm);
-      if (results.length) {
-        return _label(`Emails matching "${esc(searchTerm)}" (${results.length} found)`)
-          + results.slice(0, 6).map(e => _card(
-            `<b>${esc(e.subject || '(no subject)')}</b><br>`
-            + `<span style="color:var(--text2)">${e.type === 'sent' ? 'Sent' : e.type === 'received' ? 'Received' : 'Meeting'} · ${_timeAgo(e.date)} · ${esc(e.contactEmail)}</span>`
-            + (e.preview ? `<br><span style="color:var(--text2)">${esc(e.preview.substring(0, 120))}${e.preview.length > 120 ? '...' : ''}</span>` : '')
-          )).join('');
-      }
-      return `No emails found matching "${esc(searchTerm)}". Note: I can only search emails that have been loaded in contact timelines. Open a company to load their emails first.`;
-    }
-    return 'Specify what to search for, e.g. "search emails about proposal". I search through loaded contact timelines.';
-  }
-
-  // ── SEARCH BY INDUSTRY ──
-  if (/\bindustr|sector/i.test(lower) || /\b(in|from)\s+(tech|health|financ|educ|market|real estate|legal|consult|retail|manufactur|energy|media)/i.test(lower)) {
-    const industryTerm = lower.replace(/\b(search|find|show|list|get|companies?|in|from|the|industry|sector|all|me|by)\b/g, '').trim();
-    if (industryTerm) {
-      const matches = companies.filter(c => {
-        const enr = enrichmentCache[c.domain] || {};
-        return enr.industry && enr.industry.toLowerCase().includes(industryTerm);
-      }).sort((a,b) => b.score - a.score);
-      if (matches.length) {
-        return _label(`Companies in "${esc(industryTerm)}" (${matches.length} found)`) + matches.slice(0, 8).map(c => _companyCard(c)).join('');
-      }
-    }
-    // list all industries
-    const industries = {};
-    companies.forEach(c => {
-      const enr = enrichmentCache[c.domain] || {};
-      if (enr.industry) industries[enr.industry] = (industries[enr.industry] || 0) + 1;
-    });
-    const indList = Object.entries(industries).sort((a,b) => b[1] - a[1]);
-    if (indList.length) {
-      return _label('Industries in Your CRM') + _card(indList.map(([ind, count]) => `<b>${esc(ind)}</b>: ${count} companies`).join('<br>'));
-    }
-    return 'No industry data available yet. Run AI enrichment to populate industry information.';
-  }
-
-  // ── SEARCH BY LOCATION ──
-  if (/\b(city|country|state|location|based in|located|where|from)\b/i.test(lower) && !/email/i.test(lower)) {
-    const locTerm = lower.replace(/\b(search|find|show|list|get|companies?|in|from|based|located|where|is|are|the|city|country|state|location|all|me|by)\b/g, '').trim();
-    if (locTerm) {
-      const matches = companies.filter(c => {
-        const enr = enrichmentCache[c.domain] || {};
-        return (enr.city && enr.city.toLowerCase().includes(locTerm))
-          || (enr.country && enr.country.toLowerCase().includes(locTerm))
-          || (enr.state && enr.state.toLowerCase().includes(locTerm));
-      }).sort((a,b) => b.score - a.score);
-      if (matches.length) {
-        return _label(`Companies in "${esc(locTerm)}" (${matches.length} found)`) + matches.slice(0, 8).map(c => _companyCard(c)).join('');
-      }
-      return `No companies found in "${esc(locTerm)}". Try enriching your data or check the spelling.`;
-    }
-    // list locations
-    const countries = {};
-    companies.forEach(c => {
-      const enr = enrichmentCache[c.domain] || {};
-      if (enr.country) countries[enr.country] = (countries[enr.country] || 0) + 1;
-    });
-    const locList = Object.entries(countries).sort((a,b) => b[1] - a[1]);
-    if (locList.length) {
-      return _label('Company Locations') + _card(locList.map(([loc, count]) => `<b>${esc(loc)}</b>: ${count}`).join('<br>'));
-    }
-    return 'No location data available yet. Run AI enrichment to populate location information.';
-  }
-
-  // ── LEAD QUERIES ──
-  if (/\b(lead|company type|all leads|all companies)\b/i.test(lower) && !/hot|warm|cold|at risk/i.test(lower)) {
-    const sorted = [...companies].sort((a,b) => b.score - a.score);
-    if (!sorted.length) return 'No companies yet.';
-    return _label(`All Companies (${sorted.length} total)`) + sorted.slice(0, 8).map(c => _companyCard(c)).join('');
-  }
-
-  // ── BLOCKED DOMAINS ──
-  if (/\bblock/i.test(lower)) {
-    const blocked = [...blockedDomains];
-    if (!blocked.length) return 'No domains are currently blocked.';
-    return _label(`Blocked Domains (${blocked.length})`) + _card(blocked.map(d => esc(d)).join('<br>'));
-  }
-
-  // ── MOST EMAILS / MOST ACTIVE / BIGGEST ──
-  if (/most (email|active|messag)|biggest|largest|highest volume/i.test(lower)) {
-    const sorted = [...companies].sort((a,b) => (b.sent + b.received) - (a.sent + a.received)).slice(0, 8);
-    return _label('Most Active Companies (by email volume)') + sorted.map(c => _companyCard(c)).join('');
-  }
-
-  // ── RECENT ACTIVITY ──
-  if (/recent|latest|newest|last (week|month|few)|this (week|month)/i.test(lower)) {
-    const sorted = [...companies].sort((a,b) => new Date(b.lastDate) - new Date(a.lastDate)).slice(0, 8);
-    return _label('Most Recent Activity') + sorted.map(c => _companyCard(c)).join('');
-  }
-
-  // ── SCORE-BASED QUERIES ──
-  if (/score (above|over|greater|higher|more)|high score|top score/i.test(lower)) {
-    const numMatch = lower.match(/\d+/);
-    const threshold = numMatch ? parseInt(numMatch[0]) : 70;
-    const matches = companies.filter(c => c.score >= threshold).sort((a,b) => b.score - a.score);
-    if (!matches.length) return `No companies with a score above ${threshold}.`;
-    return _label(`Companies with Score ≥ ${threshold} (${matches.length} found)`) + matches.slice(0, 8).map(c => _companyCard(c)).join('');
-  }
-
-  // ── COUNT / HOW MANY ──
-  if (/how many|count|total number|number of/i.test(lower)) {
-    const ts = companies.reduce((s,c) => s + c.sent, 0);
-    const tr = companies.reduce((s,c) => s + c.received, 0);
-    const totalContacts = companies.reduce((s,c) => s + (c.allContacts?.length || 1), 0);
-    return _card(
-      `<b>${companies.length}</b> leads<br>`
-      + `<b>${totalContacts}</b> contacts<br>`
-      + `<b>${(ts + tr).toLocaleString()}</b> total emails (${ts.toLocaleString()} sent, ${tr.toLocaleString()} received)<br>`
-      + `<b>${companies.filter(c => c.status === 'Hot').length}</b> hot (10+ received) · <b>${companies.filter(c => c.status === 'Warm').length}</b> warm (1-9 received) · <b>${companies.filter(c => c.status === 'Cold').length}</b> cold (0 received)`
-    );
-  }
-
-  // ── COMPANY LOOKUP (fuzzy match by name or domain) ──
-  const companyMatch = companies.find(c =>
-    lower.includes(c.name.toLowerCase()) || lower.includes(c.domain.toLowerCase())
-  ) || companies.find(c =>
-    c.name.toLowerCase().split(/\s+/).some(w => w.length > 2 && lower.includes(w))
-    || c.domain.split('.')[0].length > 3 && lower.includes(c.domain.split('.')[0])
-  );
-  if (companyMatch) {
-    const enr = enrichmentCache[companyMatch.domain] || {};
-    let resp = _label(`Company Details — ${esc(companyMatch.name)}`) + _companyCard(companyMatch);
-    // show all contacts
-    if (companyMatch.allContacts?.length) {
-      resp += _label(`Contacts (${companyMatch.allContacts.length})`)
-        + companyMatch.allContacts.slice(0, 6).map(c => _contactCard(c, companyMatch.domain)).join('');
-    }
-    return resp;
-  }
-
-  // ── CONTACT LOOKUP (search by name/email across all domains) ──
-  const contactResults = _searchAllContacts(lower.replace(/\b(search|find|show|who is|tell me about|look up)\b/g, '').trim());
-  if (contactResults.length) {
-    return _label(`Search Results (${contactResults.length} contacts)`) + contactResults.slice(0, 8).map(c => _contactCard(c, c.domain)).join('');
-  }
-
-  // ── GENERIC SEARCH across company names, domains, contacts ──
-  const query = lower.replace(/\b(search|find|show|look|get|list|me|the|for|all|up)\b/g, '').trim();
-  if (query.length >= 2) {
-    const nameMatches = companies.filter(c =>
-      c.name.toLowerCase().includes(query)
-      || c.domain.includes(query)
-      || c.contact.toLowerCase().includes(query)
-      || c.contactEmail.includes(query)
-    ).sort((a,b) => b.score - a.score);
-    if (nameMatches.length) {
-      return _label(`Search Results for "${esc(query)}" (${nameMatches.length} found)`) + nameMatches.slice(0, 8).map(c => _companyCard(c)).join('');
-    }
-  }
-
-  // ── FALLBACK ──
-  return `I searched across <b>${companies.length}</b> companies but couldn't find a match for that. Try:<br><br>`
-    + `• <b>Search companies</b> — "find Acme Corp" or just type a name<br>`
-    + `• <b>Search contacts</b> — "contacts at google" or "find John"<br>`
-    + `• <b>Search emails</b> — "emails about proposal"<br>`
-    + `• <b>Filter by status</b> — "hot leads", "cold leads", "warm leads"<br>`
-    + `• <b>Filter by industry</b> — "companies in technology"<br>`
-    + `• <b>Filter by location</b> — "companies in California"<br>`
-    + `• <b>Analytics</b> — "pipeline summary", "most active", "how many"`;
+  var data = await resp.json();
+  return data.content[0].text;
 }
 
 const _escMap = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
