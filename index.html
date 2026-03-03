@@ -516,6 +516,23 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
 .modal .steps ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--text);line-height:1.5}
 .modal .steps code{background:#e8eaed;padding:2px 6px;border-radius:4px;font-size:12px;color:var(--accent2)}
 
+/* ── MERGE COMPANY CARDS ── */
+.merge-card{display:flex;align-items:center;gap:12px;padding:12px;border:2px solid var(--border);border-radius:10px;cursor:pointer;transition:.15s}
+.merge-card:hover{border-color:#9334e6;background:rgba(147,52,230,.04)}
+.merge-card.selected{border-color:#9334e6;background:rgba(147,52,230,.08)}
+.merge-card .merge-radio{width:18px;height:18px;border:2px solid var(--border);border-radius:50%;display:grid;place-items:center;flex-shrink:0;transition:.15s}
+.merge-card.selected .merge-radio{border-color:#9334e6}
+.merge-card.selected .merge-radio::after{content:'';width:10px;height:10px;border-radius:50%;background:#9334e6}
+.merge-card .merge-info{flex:1;min-width:0}
+.merge-card .merge-name{font-size:14px;font-weight:600;color:var(--text)}
+.merge-card .merge-domain{font-size:12px;color:var(--text2)}
+.merge-card .merge-stats{font-size:11px;color:var(--text2);margin-top:2px}
+.merge-card .merge-badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:6px;background:#9334e6;color:#fff;flex-shrink:0;display:none}
+.merge-card.selected .merge-badge{display:inline-block}
+.merge-alias-tag{display:inline-flex;align-items:center;gap:4px;background:rgba(147,52,230,.08);color:#9334e6;border:1px solid rgba(147,52,230,.2);border-radius:6px;padding:3px 8px 3px 10px;font-size:11px;font-weight:500}
+.merge-alias-tag button{background:none;border:none;color:#9334e6;cursor:pointer;padding:0 2px;font-size:14px;line-height:1;opacity:.7;transition:.15s}
+.merge-alias-tag button:hover{opacity:1}
+
 /* ── BLOCKED DOMAIN TAGS ── */
 .blocked-tag{display:inline-flex;align-items:center;gap:4px;background:var(--red-bg);color:var(--red);border:1px solid rgba(255,118,117,.2);border-radius:6px;padding:3px 8px 3px 10px;font-size:11px;font-weight:500}
 .blocked-tag button{background:none;border:none;color:var(--red);cursor:pointer;padding:0 2px;font-size:14px;line-height:1;opacity:.7;transition:.15s}
@@ -1139,6 +1156,10 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
     Block
   </button>
+  <button class="btn btn-ghost btn-sm" id="bulkMergeBtn" onclick="showMergeModal()" style="display:none;color:#9334e6;border-color:#9334e6">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+    Merge
+  </button>
   <button class="btn btn-ghost btn-sm" onclick="clearSelection()">Cancel</button>
 </div>
 
@@ -1323,6 +1344,27 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
   </div>
 </div>
 
+<!-- MERGE COMPANIES MODAL -->
+<div class="modal-overlay" id="mergeCompanyModal">
+  <div class="modal" style="max-width:480px">
+    <h2>Merge Companies</h2>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:16px">Combine two companies into one. All domains, contacts, and emails will be kept under the primary company.</p>
+    <div id="mergeCompanyCards" style="display:flex;flex-direction:column;gap:10px"></div>
+    <div style="margin-top:16px;padding:12px;background:var(--surface2);border-radius:8px;font-size:12px;color:var(--text2);line-height:1.5">
+      <strong style="color:var(--text)">What happens when you merge:</strong><br>
+      &#8226; Both domains are kept and linked together<br>
+      &#8226; All contacts from both companies are combined<br>
+      &#8226; All email history is preserved<br>
+      &#8226; Future emails to either domain appear under one company<br>
+      &#8226; You can unmerge later from the company detail page
+    </div>
+    <div class="modal-actions" style="margin-top:20px">
+      <button class="btn btn-ghost" onclick="closeMergeModal()">Cancel</button>
+      <button class="btn btn-primary" id="mergeConfirmBtn" onclick="executeMerge()" style="background:#9334e6">Merge Companies</button>
+    </div>
+  </div>
+</div>
+
 <!-- FLOATING AI CHAT WIDGET -->
 <div class="ai-fab" id="aiFab" onclick="toggleAIChat()" title="Kennion AI">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
@@ -1380,6 +1422,7 @@ let blockedDomains = new Set();
 let starredCompanies = new Set();   // domains starred for Proposals
 let archivedCompanies = new Set();  // domains archived
 let flaggedCompanies = new Set();   // domains flagged as invalid/not working
+let mergedDomains = {};  // { "secondary-domain.com": "primary-domain.com" } — merged company aliases
 let selectedIds = new Set();
 let starredContacts = {};  // { "domain": "email@example.com" }
 let currentCompanyOverlay = null;  // company object for open overlay
@@ -1920,6 +1963,38 @@ function loadArchivedCompanies() {
 function saveArchivedCompanies() {
   localStorage.setItem('kennion_archived_companies', JSON.stringify([...archivedCompanies]));
   scheduleCloudSync();
+}
+
+// ──────────────────────────────────────────────
+// MERGED DOMAINS PERSISTENCE
+// ──────────────────────────────────────────────
+function loadMergedDomains() {
+  try {
+    var raw = localStorage.getItem('kennion_merged_domains');
+    mergedDomains = raw ? JSON.parse(raw) : {};
+  } catch(e) { mergedDomains = {}; }
+}
+function saveMergedDomains() {
+  localStorage.setItem('kennion_merged_domains', JSON.stringify(mergedDomains));
+  scheduleCloudSync();
+}
+// Resolve a domain to its primary (follow chain)
+function resolveMergedDomain(domain) {
+  var seen = new Set();
+  var d = domain;
+  while (mergedDomains[d] && !seen.has(d)) {
+    seen.add(d);
+    d = mergedDomains[d];
+  }
+  return d;
+}
+// Get all secondary domains that map to a primary
+function getMergedAliases(primaryDomain) {
+  var aliases = [];
+  for (var sec in mergedDomains) {
+    if (mergedDomains[sec] === primaryDomain) aliases.push(sec);
+  }
+  return aliases;
 }
 
 // ──────────────────────────────────────────────
@@ -2833,6 +2908,12 @@ function buildCompaniesFromDomainMap() {
     }
   }
 
+  // Build set of secondary (merged-away) domains so we skip them in the main loop
+  var secondaryDomains = new Set();
+  for (var secDom in mergedDomains) {
+    secondaryDomains.add(secDom);
+  }
+
   companies = [];
   let id = 1;
   for (const [domain, data] of Object.entries(domainMap)) {
@@ -2841,15 +2922,55 @@ function buildCompaniesFromDomainMap() {
     if (flaggedCompanies.has(domain)) continue;
     if (archivedCompanies.has(domain)) continue;
 
-    const contactArr = Object.values(data.contacts);
+    // Skip secondary domains — their data is merged into their primary
+    if (secondaryDomains.has(domain)) continue;
+
+    // Collect all domain data sources (primary + any merged aliases)
+    var domainSources = [{ domain: domain, data: data }];
+    var aliases = getMergedAliases(domain);
+    for (var ai = 0; ai < aliases.length; ai++) {
+      if (domainMap[aliases[ai]]) {
+        domainSources.push({ domain: aliases[ai], data: domainMap[aliases[ai]] });
+      }
+    }
+
+    // Merge contacts from all sources
+    var mergedContacts = {};
+    var mergedSentIds = new Set();
+    var mergedReceivedIds = new Set();
+    var mergedLastDate = data.lastDate;
+    var mergedLastSentDate = data.lastSentDate;
+    var mergedLastReceivedDate = data.lastReceivedDate;
+
+    for (var si = 0; si < domainSources.length; si++) {
+      var srcData = domainSources[si].data;
+      for (var msgId of srcData.sentIds) mergedSentIds.add(msgId);
+      for (var msgId2 of srcData.receivedIds) mergedReceivedIds.add(msgId2);
+      if (srcData.lastDate && (!mergedLastDate || srcData.lastDate > mergedLastDate)) mergedLastDate = srcData.lastDate;
+      if (srcData.lastSentDate && (!mergedLastSentDate || srcData.lastSentDate > mergedLastSentDate)) mergedLastSentDate = srcData.lastSentDate;
+      if (srcData.lastReceivedDate && (!mergedLastReceivedDate || srcData.lastReceivedDate > mergedLastReceivedDate)) mergedLastReceivedDate = srcData.lastReceivedDate;
+      for (var ce in srcData.contacts) {
+        var ct = srcData.contacts[ce];
+        var le = ce.toLowerCase();
+        if (!mergedContacts[le]) {
+          mergedContacts[le] = { name: ct.name, email: ct.email, sentIds: new Set(ct.sentIds), receivedIds: new Set(ct.receivedIds), lastDate: ct.lastDate };
+        } else {
+          for (var cid of ct.sentIds) mergedContacts[le].sentIds.add(cid);
+          for (var cid2 of ct.receivedIds) mergedContacts[le].receivedIds.add(cid2);
+          if (ct.lastDate && (!mergedContacts[le].lastDate || ct.lastDate > mergedContacts[le].lastDate)) mergedContacts[le].lastDate = ct.lastDate;
+        }
+      }
+    }
+
+    const contactArr = Object.values(mergedContacts);
     if (contactArr.length === 0) continue;
 
     // Per-contact counts from individual Sets
     for (const ct of contactArr) { ct.sent = ct.sentIds.size; ct.received = ct.receivedIds.size; }
 
     // Unique email counts (Set-based, for scoring — CC'd emails count once)
-    const uniqueSent = data.sentIds.size;
-    const uniqueReceived = data.receivedIds.size;
+    const uniqueSent = mergedSentIds.size;
+    const uniqueReceived = mergedReceivedIds.size;
 
     // Display counts = sum of contacts (matches what user sees in contact cards)
     const domainSent = contactArr.reduce(function(s, ct) { return s + ct.sent; }, 0);
@@ -2866,9 +2987,9 @@ function buildCompaniesFromDomainMap() {
     // Uses unique email counts so CC'd emails don't inflate scores
     const now = Date.now();
     const DAY = 86400000;
-    const lastAny = data.lastDate ? data.lastDate.getTime() : 0;
-    const lastSent = data.lastSentDate ? data.lastSentDate.getTime() : 0;
-    const lastRecv = data.lastReceivedDate ? data.lastReceivedDate.getTime() : 0;
+    const lastAny = mergedLastDate ? mergedLastDate.getTime() : 0;
+    const lastSent = mergedLastSentDate ? mergedLastSentDate.getTime() : 0;
+    const lastRecv = mergedLastReceivedDate ? mergedLastReceivedDate.getTime() : 0;
     const daysSinceAny = lastAny ? (now - lastAny) / DAY : 9999;
     const daysSinceSent = lastSent ? (now - lastSent) / DAY : 9999;
     const daysSinceRecv = lastRecv ? (now - lastRecv) / DAY : 9999;
@@ -2916,9 +3037,10 @@ function buildCompaniesFromDomainMap() {
       received: domainReceived,
       status: status,
       score: score,
-      lastDate: data.lastDate,
-      lastActivity: data.lastDate ? timeAgo(data.lastDate) : 'unknown',
+      lastDate: mergedLastDate,
+      lastActivity: mergedLastDate ? timeAgo(mergedLastDate) : 'unknown',
       allContacts: contactArr,
+      mergedAliases: aliases.length > 0 ? aliases : null,
     });
   }
 
@@ -3631,9 +3753,12 @@ function buildCellHTML(col, c, color) {
       case 'company':
         var isStarred = starredCompanies.has(c.domain);
         var starDSafe = c.domain.replace(/'/g, "\\'");
+        var mergeIndicator = (c.mergedAliases && c.mergedAliases.length > 0)
+          ? '<span style="font-size:9px;font-weight:600;padding:1px 5px;border-radius:4px;background:rgba(147,52,230,.1);color:#9334e6;margin-left:4px" title="Merged with: ' + c.mergedAliases.join(', ') + '">+' + c.mergedAliases.length + '</span>'
+          : '';
         return '<div class="company-cell">' +
           '<button class="row-star' + (isStarred ? ' active' : '') + '" onclick="event.stopPropagation();toggleCompanyStar(\'' + starDSafe + '\')" title="' + (isStarred ? 'Remove from Proposals' : 'Add to Proposals') + '">&#9733;</button>' +
-          '<div class="company-logo" style="background:' + color + '">' + companyLogoHTML(c.domain, color, c.name) + '</div><div class="company-info"><span class="company-name">' + esc(c.name) + '</span><span class="company-domain">' + esc(c.domain) + '</span></div></div>';
+          '<div class="company-logo" style="background:' + color + '">' + companyLogoHTML(c.domain, color, c.name) + '</div><div class="company-info"><span class="company-name">' + esc(c.name) + mergeIndicator + '</span><span class="company-domain">' + esc(c.domain) + (c.mergedAliases && c.mergedAliases.length > 0 ? ', ' + c.mergedAliases.join(', ') : '') + '</span></div></div>';
       case 'contact':
         var initials = c.contact ? c.contact.split(' ').map(function(n){return n[0]}).join('').substring(0,2) : '';
         var ctTitle = getContactTitle(c.contactEmail || '');
@@ -3718,6 +3843,12 @@ function renderTable() {
   const q = (document.getElementById('searchInput').value || '').toLowerCase();
   if (q) data = data.filter(c => {
     if (c.name.toLowerCase().includes(q) || c.contact.toLowerCase().includes(q) || c.domain.toLowerCase().includes(q)) return true;
+    // Search merged aliases too
+    if (c.mergedAliases) {
+      for (var ma = 0; ma < c.mergedAliases.length; ma++) {
+        if (c.mergedAliases[ma].toLowerCase().includes(q)) return true;
+      }
+    }
     // Search custom/ai column values too
     for (const col of getVisibleColumns()) {
       if (col.type === 'ai' || col.type === 'custom') {
@@ -4258,6 +4389,9 @@ function updateBulkBar() {
   if (selectedIds.size > 0) {
     bar.classList.add('active');
     document.getElementById('bulkCount').textContent = selectedIds.size + ' selected';
+    // Show merge button only when exactly 2 companies are selected
+    var mergeBtn = document.getElementById('bulkMergeBtn');
+    if (mergeBtn) mergeBtn.style.display = (selectedIds.size === 2) ? 'inline-flex' : 'none';
   } else {
     bar.classList.remove('active');
   }
@@ -5558,6 +5692,108 @@ async function scanEmailsForDomain(token, domain) {
 }
 
 // ──────────────────────────────────────────────
+// MERGE COMPANIES
+// ──────────────────────────────────────────────
+let _mergePrimary = null; // domain of the selected primary company
+let _mergeCompanyA = null;
+let _mergeCompanyB = null;
+
+function showMergeModal() {
+  if (selectedIds.size !== 2) return;
+  var ids = Array.from(selectedIds);
+  _mergeCompanyA = companies.find(function(c) { return c.id === ids[0]; });
+  _mergeCompanyB = companies.find(function(c) { return c.id === ids[1]; });
+  if (!_mergeCompanyA || !_mergeCompanyB) return;
+
+  // Default to selecting the one with more emails as primary
+  var totalA = _mergeCompanyA.sent + _mergeCompanyA.received;
+  var totalB = _mergeCompanyB.sent + _mergeCompanyB.received;
+  _mergePrimary = totalA >= totalB ? _mergeCompanyA.domain : _mergeCompanyB.domain;
+
+  renderMergeCards();
+  document.getElementById('mergeCompanyModal').classList.add('active');
+}
+
+function closeMergeModal() {
+  document.getElementById('mergeCompanyModal').classList.remove('active');
+  _mergePrimary = null;
+  _mergeCompanyA = null;
+  _mergeCompanyB = null;
+}
+
+function renderMergeCards() {
+  var container = document.getElementById('mergeCompanyCards');
+  var cA = _mergeCompanyA;
+  var cB = _mergeCompanyB;
+
+  function cardHTML(c) {
+    var isPrimary = (_mergePrimary === c.domain);
+    var aliases = getMergedAliases(c.domain);
+    var domainText = c.domain;
+    if (aliases.length > 0) domainText += ' + ' + aliases.join(', ');
+    var contactCount = c.allContacts ? c.allContacts.length : 0;
+    return '<div class="merge-card' + (isPrimary ? ' selected' : '') + '" onclick="selectMergePrimary(\'' + c.domain.replace(/'/g, "\\'") + '\')">' +
+      '<div class="merge-radio"></div>' +
+      '<div class="merge-info">' +
+        '<div class="merge-name">' + esc(c.name) + '</div>' +
+        '<div class="merge-domain">' + esc(domainText) + '</div>' +
+        '<div class="merge-stats">' + c.sent + ' sent, ' + c.received + ' received &middot; ' + contactCount + ' contact' + (contactCount !== 1 ? 's' : '') + '</div>' +
+      '</div>' +
+      '<span class="merge-badge">Primary</span>' +
+    '</div>';
+  }
+
+  container.innerHTML = cardHTML(cA) + '<div style="text-align:center;color:var(--text2);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Select primary company &#8593;</div>' + cardHTML(cB);
+}
+
+function selectMergePrimary(domain) {
+  _mergePrimary = domain;
+  renderMergeCards();
+}
+
+function executeMerge() {
+  if (!_mergeCompanyA || !_mergeCompanyB || !_mergePrimary) return;
+  var primaryDomain = _mergePrimary;
+  var secondaryDomain = (primaryDomain === _mergeCompanyA.domain) ? _mergeCompanyB.domain : _mergeCompanyA.domain;
+
+  // Store the merge alias
+  mergedDomains[secondaryDomain] = primaryDomain;
+  saveMergedDomains();
+
+  // Copy the primary company name to cache if not already there
+  var primaryCompany = (primaryDomain === _mergeCompanyA.domain) ? _mergeCompanyA : _mergeCompanyB;
+  if (primaryCompany.name) {
+    companyNameCache[primaryDomain] = primaryCompany.name;
+    companyNameCacheDirty = true;
+    saveCompanyNameCache();
+  }
+
+  // Carry over company type from primary
+  var primaryType = companyTypes[primaryDomain] || companyTypes[secondaryDomain] || 'Lead';
+  companyTypes[primaryDomain] = primaryType;
+  saveCompanyTypes();
+
+  // Rebuild and render
+  buildCompaniesFromDomainMap();
+  updateStats();
+  renderTable();
+  persistData();
+
+  closeMergeModal();
+  clearSelection();
+}
+
+function unmergeCompany(secondaryDomain) {
+  if (!mergedDomains[secondaryDomain]) return;
+  delete mergedDomains[secondaryDomain];
+  saveMergedDomains();
+  buildCompaniesFromDomainMap();
+  updateStats();
+  renderTable();
+  persistData();
+}
+
+// ──────────────────────────────────────────────
 // INLINE DETAIL PANEL — single page, no overlays
 // States: 'company' (contacts list) or 'contact' (timeline)
 // ──────────────────────────────────────────────
@@ -5653,6 +5889,12 @@ function showCompanyPanel(id) {
           '<span style="font-size:12px">Website: <a href="https://' + esc(c.domain) + '" target="_blank" style="color:var(--accent)">' + esc(c.domain) + '</a></span>' +
           '<span style="font-size:12px">LinkedIn: <a href="' + linkedInCompanyURL(c.domain) + '" target="_blank" class="linkedin-link" style="color:var(--accent);display:inline-flex;align-items:center;gap:3px">' + linkedInIconSVG() + ' Profile</a></span>' +
         '</div>' +
+        (c.mergedAliases && c.mergedAliases.length > 0 ? '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">' +
+          '<span style="font-size:11px;color:var(--text2);font-weight:600">Merged domains:</span>' +
+          c.mergedAliases.map(function(alias) {
+            return '<span class="merge-alias-tag">' + esc(alias) + '<button onclick="event.stopPropagation();if(confirm(\'Unmerge ' + alias.replace(/'/g, "\\'") + '? It will become a separate company again.\')){unmergeCompany(\'' + alias.replace(/'/g, "\\'") + '\')}" title="Unmerge">&times;</button></span>';
+          }).join('') +
+        '</div>' : '') +
       '</div>' +
     '</div>' +
   '</div>';
@@ -8343,6 +8585,7 @@ function esc(text) {
   loadStarredCompanies();
   loadArchivedCompanies();
   loadFlaggedCompanies();
+  loadMergedDomains();
   updateFlaggedCount(); // Show correct flagged count immediately on load
   loadCompanyNameCache();
   loadContactNameOverrides();
