@@ -74,8 +74,6 @@ body{min-height:100vh;overflow-x:hidden}
 .sidebar-badge{margin-left:auto;background:var(--accent);color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px}
 .sidebar-add-btn{background:none;border:1px solid #3a3a4d;color:#9e9eb8;cursor:pointer;width:22px;height:22px;border-radius:5px;display:grid;place-items:center;padding:0;margin-left:6px;transition:.15s;flex-shrink:0}
 .sidebar-add-btn:hover{background:#3a3a4d;color:#e8e8f0;border-color:#5b9cf6}
-.sidebar-item:not(:hover) .sidebar-add-btn{opacity:0}
-.sidebar-item:hover .sidebar-add-btn{opacity:1}
 .main{flex:1;overflow-y:auto;overflow-x:hidden;padding:24px;display:flex;flex-direction:column;gap:20px}
 .main:has(.detail-page.active){padding:0;gap:0;overflow:hidden}
 
@@ -738,10 +736,6 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
       <span class="sidebar-badge" id="coldCount" style="background:var(--blue)">0</span>
     </div>
     <div class="sidebar-section">Manage</div>
-    <div class="sidebar-item" id="addCompanyItem" onclick="showAddCompanyModal()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-      Add Company
-    </div>
     <div class="sidebar-item" id="archivedViewItem" onclick="showArchivedView()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
       Archived
