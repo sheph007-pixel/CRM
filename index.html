@@ -4751,7 +4751,7 @@ function toggleSidebar() {
 
 function filterByStatus(status, el) {
   currentFilter = status;
-  currentTypeFilter = 'Lead';
+  currentTypeFilter = status === 'all' ? 'all' : 'Lead';
   tableShowAll = false;
   showingProposals = false;
   showingArchived = false;
