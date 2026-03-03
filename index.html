@@ -6058,7 +6058,8 @@ function saveEmailSignature(sig) {
 function saveSignatureFromSettings() {
   var val = document.getElementById('settingsSignatureInput').value;
   saveEmailSignature(val);
-  scheduleSave();
+  persistData();
+  scheduleCloudSync();
   var status = document.getElementById('signatureSaveStatus');
   var btn = document.getElementById('saveSignatureBtn');
   status.textContent = '\u2713 Signature saved';
