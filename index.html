@@ -362,6 +362,50 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
 .followup-date-input{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;color:var(--text);font-family:inherit;cursor:pointer;outline:none;transition:border .15s}
 .followup-date-input:focus{border-color:var(--accent)}
 .followup-date-input::-webkit-calendar-picker-indicator{cursor:pointer;filter:invert(.5)}
+
+/* ── FOLLOW-UP KANBAN BOARD ── */
+.fu-kanban-wrap{display:none;flex:1;overflow-x:auto;overflow-y:hidden;padding:0 0 12px}
+.fu-kanban{display:flex;gap:14px;height:100%;min-height:0;align-items:flex-start;padding-bottom:8px}
+.fu-kanban-col{min-width:220px;max-width:250px;width:220px;background:var(--surface2);border-radius:12px;display:flex;flex-direction:column;max-height:calc(100vh - 180px);flex-shrink:0}
+.fu-kanban-col-header{padding:12px 14px 8px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:1}
+.fu-kanban-col-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text2)}
+.fu-kanban-col-count{font-size:10px;font-weight:700;background:var(--border);color:var(--text2);border-radius:10px;padding:1px 7px;min-width:20px;text-align:center}
+.fu-kanban-col.col-new .fu-kanban-col-title{color:var(--accent)}
+.fu-kanban-col.col-new .fu-kanban-col-count{background:rgba(26,115,232,.15);color:var(--accent)}
+.fu-kanban-col.col-overdue .fu-kanban-col-title{color:var(--red)}
+.fu-kanban-col.col-overdue .fu-kanban-col-count{background:var(--red-bg);color:var(--red)}
+.fu-kanban-col.col-current .fu-kanban-col-title{color:var(--green)}
+.fu-kanban-col.col-current .fu-kanban-col-count{background:var(--green-bg);color:var(--green)}
+.fu-kanban-cards{flex:1;overflow-y:auto;padding:4px 10px 10px;display:flex;flex-direction:column;gap:8px}
+.fu-kanban-cards::-webkit-scrollbar{width:4px}
+.fu-kanban-cards::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.fu-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;cursor:pointer;transition:box-shadow .15s,border-color .15s;position:relative}
+.fu-card:hover{border-color:var(--accent);box-shadow:0 2px 8px rgba(26,115,232,.12)}
+.fu-card-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.fu-card-logo{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;font-weight:700;font-size:11px;color:#fff;flex-shrink:0;overflow:hidden;position:relative}
+.fu-card-logo img{width:100%;height:100%;object-fit:contain;position:absolute;inset:0;background:#fff;padding:2px;border-radius:inherit}
+.fu-card-name{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.fu-card-domain{font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px}
+.fu-card-contact{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);margin-bottom:6px}
+.fu-card-contact .avatar{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:8px;color:#fff;flex-shrink:0}
+.fu-card-footer{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:4px}
+.fu-card-last{font-size:10px;color:var(--text2)}
+.fu-card-actions{display:flex;align-items:center;gap:4px}
+.fu-card-move{background:none;border:1px solid var(--border);border-radius:5px;padding:2px 6px;font-size:10px;font-weight:600;color:var(--text2);cursor:pointer;font-family:inherit;transition:.15s;display:inline-flex;align-items:center;gap:3px}
+.fu-card-move:hover{border-color:var(--accent);color:var(--accent);background:rgba(26,115,232,.06)}
+.fu-card-move svg{width:10px;height:10px}
+.fu-card-remove{background:none;border:none;cursor:pointer;color:var(--border);padding:2px;transition:.15s;display:inline-flex;align-items:center}
+.fu-card-remove:hover{color:var(--red)}
+.fu-card-remove svg{width:14px;height:14px}
+.fu-move-menu{position:absolute;right:8px;top:100%;margin-top:2px;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.15);z-index:50;padding:4px;min-width:130px;display:none}
+.fu-move-menu.open{display:block}
+.fu-move-menu-item{display:block;width:100%;text-align:left;padding:6px 12px;font-size:12px;font-weight:500;color:var(--text);background:none;border:none;border-radius:5px;cursor:pointer;font-family:inherit;transition:.1s}
+.fu-move-menu-item:hover{background:var(--surface2);color:var(--accent)}
+.fu-move-menu-item.active{color:var(--accent);font-weight:700}
+.fu-kanban-empty{text-align:center;padding:20px 10px;color:var(--text2);font-size:11px;opacity:.7}
+.fu-card-overdue{border-color:rgba(217,48,37,.3)}
+.fu-card-overdue .fu-card-last{color:var(--red)}
+
 .dp-primary-badge{font-size:8px;padding:1px 5px;border-radius:8px;background:var(--accent);color:#fff;font-weight:700;flex-shrink:0}
 .dp-left-foot{padding:8px 20px;border-top:1px solid var(--border);flex-shrink:0}
 
@@ -963,6 +1007,11 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
           <thead id="tableHead"></thead>
           <tbody id="tableBody"></tbody>
         </table>
+      </div>
+
+      <!-- FOLLOW-UP KANBAN BOARD -->
+      <div class="fu-kanban-wrap" id="fuKanbanWrap">
+        <div class="fu-kanban" id="fuKanbanBoard"></div>
       </div>
     </div>
 
@@ -4319,7 +4368,7 @@ function filterByType(type, el) {
   showingProposals = false;
   showingArchived = false;
   showingFlagged = false;
-  showingFollowUp = false;
+  showingFollowUp = false; hideFollowUpKanban();
   hideInbox(); hideSettingsView(); hideBlockedView();
   document.getElementById('crmContent').classList.add('active');
   document.getElementById('crmContent').style.display = '';
@@ -4353,7 +4402,7 @@ function filterByStatCard(type, el) {
   showingProposals = false;
   showingArchived = false;
   showingFlagged = false;
-  showingFollowUp = false;
+  showingFollowUp = false; hideFollowUpKanban();
   hideInbox(); hideSettingsView(); hideBlockedView();
   document.getElementById('crmContent').classList.add('active');
   document.getElementById('crmContent').style.display = '';
@@ -4679,7 +4728,7 @@ function filterByStatus(status, el) {
   showingProposals = false;
   showingArchived = false;
   showingFlagged = false;
-  showingFollowUp = false;
+  showingFollowUp = false; hideFollowUpKanban();
   hideInbox(); hideSettingsView(); hideBlockedView();
   document.getElementById('crmContent').classList.add('active');
   document.getElementById('crmContent').style.display = '';
@@ -4811,7 +4860,7 @@ function showBlockedView() {
   showingProposals = false;
   showingArchived = false;
   showingFlagged = false;
-  showingFollowUp = false;
+  showingFollowUp = false; hideFollowUpKanban();
   hideInbox(); hideSettingsView();
   showingBlocked = true;
   document.getElementById('crmContent').classList.remove('active');
@@ -4959,7 +5008,7 @@ function openFlaggedDetail(domain) {
   // Mark that we came from flagged view, then clear the flag so renderTable() won't re-trigger showFlaggedView
   _cameFromFlagged = true;
   showingFlagged = false;
-  showingFollowUp = false;
+  showingFollowUp = false; hideFollowUpKanban();
   showCompanyPanel(tempId);
 }
 
@@ -4967,7 +5016,7 @@ function showFlaggedView() {
   showingProposals = false;
   showingArchived = false;
   showingFlagged = true;
-  showingFollowUp = false;
+  showingFollowUp = false; hideFollowUpKanban();
   hideInbox(); hideSettingsView(); hideBlockedView();
   document.getElementById('crmContent').classList.add('active');
   document.getElementById('crmContent').style.display = '';
@@ -5625,7 +5674,7 @@ function showProposals() {
   showingProposals = true;
   showingArchived = false;
   showingFlagged = false;
-  showingFollowUp = false;
+  showingFollowUp = false; hideFollowUpKanban();
   currentFilter = 'all';
   currentTypeFilter = 'all';
   tableShowAll = false;
@@ -5697,105 +5746,190 @@ function showFollowUp() {
   document.getElementById('statsSection').style.display = 'none';
   setViewTitle('Follow Up', false);
   clearSelection();
-  renderTable();
-}
-
-function renderFollowUpTable() {
+  // Hide table, show kanban
+  document.querySelector('.table-wrap').style.display = 'none';
+  document.querySelector('.toolbar').style.display = 'none';
   var colMgr = document.querySelector('.col-mgr-wrap');
   if (colMgr) colMgr.style.display = 'none';
-  var thead = document.getElementById('tableHead');
-  thead.innerHTML = '<tr>'
-    + '<th style="width:30px"><input type="checkbox" class="row-checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this.checked)"></th>'
-    + '<th onclick="sortTable(\'company\')" style="cursor:pointer">Company</th>'
-    + '<th onclick="sortTable(\'contact\')" style="cursor:pointer">Primary Contact</th>'
-    + '<th onclick="sortTable(\'lastActivity\')" style="cursor:pointer">Last Email</th>'
-    + '<th onclick="sortTable(\'followUpDate\')" style="cursor:pointer;width:150px">Follow Up Month</th>'
-    + '</tr>';
+  document.getElementById('fuKanbanWrap').style.display = 'flex';
+  renderFollowUpKanban();
+}
 
+function hideFollowUpKanban() {
+  var kb = document.getElementById('fuKanbanWrap');
+  if (kb) kb.style.display = 'none';
+  document.querySelector('.table-wrap').style.display = '';
+  document.querySelector('.toolbar').style.display = '';
+}
+
+var MONTH_LABELS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+function renderFollowUpKanban() {
+  var board = document.getElementById('fuKanbanBoard');
   var data = companies.filter(function(c) {
     return followUpCompanies.has(c.domain) && !archivedCompanies.has(c.domain) && !blockedDomains.has(c.domain);
   });
 
-  var q = (document.getElementById('searchInput').value || '').toLowerCase();
-  if (q) {
-    data = data.filter(function(c) {
-      return c.name.toLowerCase().includes(q) || c.contact.toLowerCase().includes(q) || c.domain.toLowerCase().includes(q);
-    });
+  var now = new Date();
+  var currentYear = now.getFullYear();
+  var nowMonth = now.toISOString().slice(0, 7); // "YYYY-MM"
+
+  // Bucketize: "new" = no date assigned, then by month key "YYYY-MM"
+  var buckets = { 'new': [] };
+  // Build month columns for current year
+  var monthKeys = [];
+  for (var m = 0; m < 12; m++) {
+    var key = currentYear + '-' + String(m + 1).padStart(2, '0');
+    monthKeys.push(key);
+    buckets[key] = [];
   }
 
-  // Sort: companies with follow-up dates first (earliest date first), then undated
-  var sortKey = currentSort.key || 'followUpDate';
-  data.sort(function(a, b) {
-    if (sortKey === 'company') {
-      var va = (a.name || '').toLowerCase(), vb = (b.name || '').toLowerCase();
-      return currentSort.asc ? va.localeCompare(vb) : vb.localeCompare(va);
-    }
-    if (sortKey === 'contact') {
-      var va = (a.contact || '').toLowerCase(), vb = (b.contact || '').toLowerCase();
-      return currentSort.asc ? va.localeCompare(vb) : vb.localeCompare(va);
-    }
-    if (sortKey === 'lastActivity') {
-      var va = a.lastDate ? a.lastDate.getTime() : 0, vb = b.lastDate ? b.lastDate.getTime() : 0;
-      return currentSort.asc ? va - vb : vb - va;
-    }
-    // Default: sort by follow-up month (earliest first, undated last)
-    var da = (followUpDates[a.domain] || '').slice(0, 7);
-    var db = (followUpDates[b.domain] || '').slice(0, 7);
-    if (da && !db) return -1;
-    if (!da && db) return 1;
-    if (da && db) { var cmp = da.localeCompare(db); if (cmp !== 0) return currentSort.asc === false ? -cmp : cmp; }
-    return (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
-  });
-
-  var tbody = document.getElementById('tableBody');
-  if (data.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text2)">No follow-ups yet. Flag a company to add it here.</td></tr>';
-    updateViewTitleCount(0);
-    return;
-  }
-
-  var rows = [];
-  var nowMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
   for (var i = 0; i < data.length; i++) {
     var c = data[i];
-    var color = COLORS[c.id % COLORS.length];
-    var sel = selectedIds.has(c.id);
-    var dSafe = c.domain.replace(/'/g, "\\'");
     var rawDate = followUpDates[c.domain] || '';
-    var dateVal = rawDate.length > 7 ? rawDate.slice(0, 7) : rawDate; // migrate YYYY-MM-DD → YYYY-MM
-    var isOverdue = dateVal && dateVal < nowMonth;
-    var isCurrent = dateVal && dateVal === nowMonth;
-
-    var row = '<tr' + (sel ? ' class="row-selected"' : '') + ' data-id="' + c.id + '">';
-    row += '<td class="col-check"><input type="checkbox" class="row-checkbox"' + (sel ? ' checked' : '') + ' data-rid="' + c.id + '"></td>';
-
-    // Company with flag
-    var isStarred = starredCompanies.has(c.domain);
-    row += '<td><div class="company-cell">'
-      + '<button class="row-star' + (isStarred ? ' active' : '') + '" onclick="event.stopPropagation();toggleCompanyStar(\'' + dSafe + '\')" title="' + (isStarred ? 'Remove from Proposals' : 'Add to Proposals') + '">&#9733;</button>'
-      + '<button class="row-flag active" onclick="event.stopPropagation();toggleFollowUp(\'' + dSafe + '\')" title="Remove from Follow Up"><svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></button>'
-      + '<div class="company-logo" style="background:' + color + '">' + companyLogoHTML(c.domain, color, c.name) + '</div>'
-      + '<div class="company-info"><span class="company-name">' + esc(c.name) + '</span><span class="company-domain">' + esc(c.domain) + '</span></div>'
-      + '</div></td>';
-
-    // Primary Contact
-    var initials = c.contact ? c.contact.split(' ').map(function(n){return n[0]}).join('').substring(0,2) : '';
-    var ctTitle = getContactTitle(c.contactEmail || '');
-    row += '<td><div class="contact-cell"><div class="avatar" style="background:' + color + '">' + contactPhotoHTML(c.contactEmail || '', color, initials) + '</div><div><span class="contact-name">' + esc(c.contact) + '</span>' + (ctTitle ? '<div class="contact-title">' + esc(ctTitle) + '</div>' : '') + '</div></div></td>';
-
-    // Last Email
-    row += '<td><span style="color:var(--text2)">' + esc(c.lastActivity) + '</span></td>';
-
-    // Follow Up Month
-    var dateStyle = isOverdue ? 'color:#e8453c;font-weight:600' : isCurrent ? 'color:#1e8e3e;font-weight:600' : '';
-    row += '<td><input type="month" class="followup-date-input" value="' + dateVal + '" style="' + dateStyle + '" onclick="event.stopPropagation()" onchange="event.stopPropagation();setFollowUpDate(\'' + dSafe + '\',this.value)"></td>';
-
-    row += '</tr>';
-    rows.push(row);
+    var dateVal = rawDate.length > 7 ? rawDate.slice(0, 7) : rawDate;
+    if (!dateVal) {
+      buckets['new'].push(c);
+    } else if (buckets[dateVal]) {
+      buckets[dateVal].push(c);
+    } else {
+      // Date is from a different year — put in "new" bucket or the closest month
+      // If it's a past year, treat as overdue and show in earliest month
+      // If future year, show in last month
+      if (dateVal < monthKeys[0]) {
+        buckets[monthKeys[0]].push(c);
+      } else if (dateVal > monthKeys[11]) {
+        buckets[monthKeys[11]].push(c);
+      } else {
+        buckets['new'].push(c);
+      }
+    }
   }
 
-  tbody.innerHTML = rows.join('');
+  // Sort each bucket by name
+  for (var bk in buckets) {
+    buckets[bk].sort(function(a, b) { return (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase()); });
+  }
+
+  var html = '';
+
+  // NEW column
+  html += buildKanbanColumn('new', 'NEW', buckets['new'], nowMonth, 'col-new');
+
+  // Month columns
+  for (var mi = 0; mi < monthKeys.length; mi++) {
+    var mk = monthKeys[mi];
+    var extraClass = '';
+    if (mk < nowMonth) extraClass = 'col-overdue';
+    else if (mk === nowMonth) extraClass = 'col-current';
+    html += buildKanbanColumn(mk, MONTH_LABELS[mi], buckets[mk], nowMonth, extraClass);
+  }
+
+  board.innerHTML = html;
   updateViewTitleCount(data.length);
+
+  // Close any open move menus when clicking elsewhere
+  document.addEventListener('click', closeAllMovMenus);
+}
+
+function buildKanbanColumn(colKey, label, items, nowMonth, extraClass) {
+  var h = '<div class="fu-kanban-col ' + (extraClass || '') + '" data-col="' + colKey + '">';
+  h += '<div class="fu-kanban-col-header"><span class="fu-kanban-col-title">' + label + '</span><span class="fu-kanban-col-count">' + items.length + '</span></div>';
+  h += '<div class="fu-kanban-cards">';
+  if (items.length === 0) {
+    h += '<div class="fu-kanban-empty">No companies</div>';
+  } else {
+    for (var i = 0; i < items.length; i++) {
+      h += buildKanbanCard(items[i], colKey, nowMonth);
+    }
+  }
+  h += '</div></div>';
+  return h;
+}
+
+function buildKanbanCard(c, colKey, nowMonth) {
+  var color = COLORS[c.id % COLORS.length];
+  var dSafe = c.domain.replace(/'/g, "\\'");
+  var rawDate = followUpDates[c.domain] || '';
+  var dateVal = rawDate.length > 7 ? rawDate.slice(0, 7) : rawDate;
+  var isOverdue = dateVal && dateVal < nowMonth;
+  var initials = c.contact ? c.contact.split(' ').map(function(n){return n[0]}).join('').substring(0,2) : '';
+
+  var card = '<div class="fu-card' + (isOverdue ? ' fu-card-overdue' : '') + '" onclick="openDetail(' + c.id + ')" data-domain="' + esc(c.domain) + '">';
+
+  // Top row: logo + name
+  card += '<div class="fu-card-top">';
+  card += '<div class="fu-card-logo" style="background:' + color + '">' + companyLogoHTML(c.domain, color, c.name) + '</div>';
+  card += '<span class="fu-card-name">' + esc(c.name) + '</span>';
+  card += '</div>';
+
+  // Domain
+  card += '<div class="fu-card-domain">' + esc(c.domain) + '</div>';
+
+  // Contact
+  if (c.contact) {
+    card += '<div class="fu-card-contact"><div class="avatar" style="background:' + color + ';width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:8px;color:#fff;flex-shrink:0">' + esc(initials) + '</div>' + esc(c.contact) + '</div>';
+  }
+
+  // Footer: last activity + actions
+  card += '<div class="fu-card-footer">';
+  card += '<span class="fu-card-last">' + esc(c.lastActivity || '') + '</span>';
+  card += '<div class="fu-card-actions">';
+
+  // Move button
+  card += '<button class="fu-card-move" onclick="event.stopPropagation();toggleMoveMenu(this,\'' + dSafe + '\')" title="Move to month">';
+  card += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>';
+  card += (colKey === 'new' ? 'Move' : MONTH_LABELS[parseInt(colKey.slice(5)) - 1] || 'Move');
+  card += '</button>';
+
+  // Remove button
+  card += '<button class="fu-card-remove" onclick="event.stopPropagation();toggleFollowUp(\'' + dSafe + '\')" title="Remove from Follow Up">';
+  card += '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  card += '</button>';
+
+  card += '</div></div>';
+
+  // Move menu (hidden by default)
+  card += '<div class="fu-move-menu" id="moveMenu_' + c.domain.replace(/[^a-zA-Z0-9]/g, '_') + '">';
+  card += '<button class="fu-move-menu-item' + (colKey === 'new' ? ' active' : '') + '" onclick="event.stopPropagation();moveFollowUpTo(\'' + dSafe + '\',\'\')">NEW</button>';
+  var yr = new Date().getFullYear();
+  for (var mi = 0; mi < 12; mi++) {
+    var mk = yr + '-' + String(mi + 1).padStart(2, '0');
+    card += '<button class="fu-move-menu-item' + (colKey === mk ? ' active' : '') + '" onclick="event.stopPropagation();moveFollowUpTo(\'' + dSafe + '\',\'' + mk + '\')">' + MONTH_LABELS[mi] + '</button>';
+  }
+  card += '</div>';
+
+  card += '</div>';
+  return card;
+}
+
+function toggleMoveMenu(btn, domain) {
+  var menuId = 'moveMenu_' + domain.replace(/[^a-zA-Z0-9]/g, '_');
+  var menu = document.getElementById(menuId);
+  if (!menu) return;
+  var wasOpen = menu.classList.contains('open');
+  closeAllMovMenus();
+  if (!wasOpen) menu.classList.add('open');
+}
+
+function closeAllMovMenus() {
+  document.querySelectorAll('.fu-move-menu.open').forEach(function(m) { m.classList.remove('open'); });
+}
+
+function moveFollowUpTo(domain, monthKey) {
+  if (monthKey) {
+    followUpDates[domain] = monthKey;
+  } else {
+    delete followUpDates[domain];
+  }
+  saveFollowUpDates();
+  closeAllMovMenus();
+  renderFollowUpKanban();
+}
+
+// Legacy table renderer — now redirects to Kanban
+function renderFollowUpTable() {
+  renderFollowUpKanban();
 }
 
 function updateFollowUpCount() {
@@ -5838,7 +5972,7 @@ function showArchivedView() {
   showingProposals = false;
   showingArchived = true;
   showingFlagged = false;
-  showingFollowUp = false;
+  showingFollowUp = false; hideFollowUpKanban();
   hideInbox(); hideSettingsView(); hideBlockedView();
   document.getElementById('crmContent').classList.add('active');
   document.getElementById('crmContent').style.display = '';
@@ -7752,7 +7886,7 @@ function showSettingsView() {
   showingProposals = false;
   showingArchived = false;
   showingFlagged = false;
-  showingFollowUp = false;
+  showingFollowUp = false; hideFollowUpKanban();
   hideBlockedView();
   // Hide all other views
   document.getElementById('crmContent').classList.remove('active');
@@ -8282,7 +8416,7 @@ function showInbox() {
   showingProposals = false;
   showingArchived = false;
   showingFlagged = false;
-  showingFollowUp = false;
+  showingFollowUp = false; hideFollowUpKanban();
   hideSettingsView(); hideBlockedView();
   setViewTitle(null, false);
   document.getElementById('crmContent').classList.remove('active');
