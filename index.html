@@ -72,6 +72,10 @@ body{min-height:100vh;overflow-x:hidden}
 .sidebar-item.active{color:#5b9cf6}
 .sidebar-item svg{width:16px;height:16px;flex-shrink:0}
 .sidebar-badge{margin-left:auto;background:var(--accent);color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px}
+.sidebar-add-btn{background:none;border:1px solid #3a3a4d;color:#9e9eb8;cursor:pointer;width:22px;height:22px;border-radius:5px;display:grid;place-items:center;padding:0;margin-left:6px;transition:.15s;flex-shrink:0}
+.sidebar-add-btn:hover{background:#3a3a4d;color:#e8e8f0;border-color:#5b9cf6}
+.sidebar-item:not(:hover) .sidebar-add-btn{opacity:0}
+.sidebar-item:hover .sidebar-add-btn{opacity:1}
 .main{flex:1;overflow-y:auto;overflow-x:hidden;padding:24px;display:flex;flex-direction:column;gap:20px}
 .main:has(.detail-page.active){padding:0;gap:0;overflow:hidden}
 
@@ -709,10 +713,13 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
       <span class="sidebar-badge" id="proposalCount" style="background:#f5a623">0</span>
     </div>
     <div style="border-bottom:1px solid #2a2a3d;margin:4px 0"></div>
-    <div class="sidebar-item active" data-group="segment" onclick="filterByStatus('all',this)">
+    <div class="sidebar-item active" data-group="segment" onclick="filterByStatus('all',this)" style="position:relative">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
       All Companies
       <span class="sidebar-badge" id="companyCount">0</span>
+      <button class="sidebar-add-btn" onclick="event.stopPropagation();showAddCompanyModal()" title="Add Company">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
     </div>
     <div class="sidebar-section">AI Segments</div>
     <div class="sidebar-item" data-group="segment" onclick="filterByStatus('Hot',this)">
@@ -1295,26 +1302,29 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
 
 <!-- ADD COMPANY MODAL -->
 <div class="modal-overlay" id="addCompanyModal">
-  <div class="modal" style="max-width:420px">
+  <div class="modal" style="max-width:440px">
     <h2>Add Company</h2>
-    <p style="color:var(--text2);font-size:13px;margin-bottom:16px">Manually add a company to your CRM pipeline.</p>
+    <p style="color:var(--text2);font-size:13px;margin-bottom:16px">Add a new company. We'll check for duplicates and scan your emails automatically.</p>
     <div style="display:flex;flex-direction:column;gap:12px">
       <div>
-        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Company Name</label>
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Company Name <span style="color:var(--red)">*</span></label>
         <input type="text" id="addCompanyName" placeholder="e.g. Acme Corp" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
       </div>
       <div>
-        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Domain</label>
-        <input type="text" id="addCompanyDomain" placeholder="e.g. acme.com" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Company Domain <span style="color:var(--red)">*</span></label>
+        <input type="text" id="addCompanyDomain" placeholder="e.g. acme.com" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit" oninput="checkCompanyDuplicate()">
+        <div id="addCompanyDupeStatus" style="margin-top:6px;font-size:12px;display:none"></div>
       </div>
       <div>
-        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Contact Email (optional)</label>
+        <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">Contact Email <span style="color:var(--text2);font-weight:400">(optional)</span></label>
         <input type="text" id="addCompanyEmail" placeholder="e.g. john@acme.com" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit">
       </div>
     </div>
+    <!-- Status area for progress feedback -->
+    <div id="addCompanyStatus" style="display:none;margin-top:14px;padding:10px 14px;border-radius:8px;font-size:12px;line-height:1.5"></div>
     <div class="modal-actions" style="margin-top:20px">
       <button class="btn btn-ghost" onclick="closeAddCompanyModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="addCompanyManually()">Add Company</button>
+      <button class="btn btn-primary" id="addCompanySubmitBtn" onclick="addCompanyManually()">Add Company</button>
     </div>
   </div>
 </div>
@@ -5277,14 +5287,24 @@ function bulkStarSelected() {
 }
 
 // ──────────────────────────────────────────────
-// ADD COMPANY MANUALLY
+// ADD COMPANY MANUALLY (with duplicate check & email scan)
 // ──────────────────────────────────────────────
+let _addCompanyDupeTimer = null;
+
 function showAddCompanyModal() {
   document.getElementById('addCompanyModal').classList.add('active');
   document.getElementById('addCompanyName').value = '';
   document.getElementById('addCompanyDomain').value = '';
   document.getElementById('addCompanyEmail').value = '';
-  document.getElementById('addCompanyType').value = 'Lead';
+  var dupeEl = document.getElementById('addCompanyDupeStatus');
+  dupeEl.style.display = 'none';
+  dupeEl.textContent = '';
+  var statusEl = document.getElementById('addCompanyStatus');
+  statusEl.style.display = 'none';
+  statusEl.textContent = '';
+  var submitBtn = document.getElementById('addCompanySubmitBtn');
+  submitBtn.disabled = false;
+  submitBtn.textContent = 'Add Company';
   setTimeout(() => document.getElementById('addCompanyName').focus(), 100);
 }
 
@@ -5292,10 +5312,90 @@ function closeAddCompanyModal() {
   document.getElementById('addCompanyModal').classList.remove('active');
 }
 
-function addCompanyManually() {
-  const name = document.getElementById('addCompanyName').value.trim();
-  const domain = document.getElementById('addCompanyDomain').value.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
-  const email = document.getElementById('addCompanyEmail').value.trim().toLowerCase();
+function cleanDomainInput(raw) {
+  return raw.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '');
+}
+
+function checkCompanyDuplicate() {
+  clearTimeout(_addCompanyDupeTimer);
+  _addCompanyDupeTimer = setTimeout(function() {
+    var raw = document.getElementById('addCompanyDomain').value;
+    var domain = cleanDomainInput(raw);
+    var dupeEl = document.getElementById('addCompanyDupeStatus');
+    var submitBtn = document.getElementById('addCompanySubmitBtn');
+
+    if (!domain || domain.indexOf('.') === -1) {
+      dupeEl.style.display = 'none';
+      submitBtn.disabled = false;
+      return;
+    }
+
+    // Check if domain already exists in companies list
+    var existingCompany = companies.find(function(c) { return c.domain === domain; });
+    // Also check domainMap (includes archived/blocked)
+    var inDomainMap = domainMap[domain];
+    // Check archived and blocked
+    var isArchived = typeof archivedCompanies !== 'undefined' && archivedCompanies.has && archivedCompanies.has(domain);
+    var isBlocked = isBlockedDomain(domain);
+
+    if (existingCompany) {
+      dupeEl.style.display = 'block';
+      dupeEl.style.color = 'var(--orange)';
+      dupeEl.style.background = 'var(--orange-bg)';
+      dupeEl.style.padding = '6px 10px';
+      dupeEl.style.borderRadius = '6px';
+      dupeEl.innerHTML = '&#9888; <strong>' + (existingCompany.name || domain) + '</strong> already exists in your CRM.';
+      submitBtn.disabled = true;
+    } else if (isArchived) {
+      dupeEl.style.display = 'block';
+      dupeEl.style.color = 'var(--text2)';
+      dupeEl.style.background = 'var(--surface2)';
+      dupeEl.style.padding = '6px 10px';
+      dupeEl.style.borderRadius = '6px';
+      dupeEl.innerHTML = 'This domain is archived. Unarchive it to add.';
+      submitBtn.disabled = true;
+    } else if (isBlocked) {
+      dupeEl.style.display = 'block';
+      dupeEl.style.color = 'var(--red)';
+      dupeEl.style.background = 'var(--red-bg)';
+      dupeEl.style.padding = '6px 10px';
+      dupeEl.style.borderRadius = '6px';
+      dupeEl.innerHTML = 'This domain is blocked. Unblock it first.';
+      submitBtn.disabled = true;
+    } else {
+      dupeEl.style.display = 'block';
+      dupeEl.style.color = 'var(--green)';
+      dupeEl.style.background = 'var(--green-bg)';
+      dupeEl.style.padding = '6px 10px';
+      dupeEl.style.borderRadius = '6px';
+      dupeEl.innerHTML = '&#10003; Domain available — ready to add.';
+      submitBtn.disabled = false;
+    }
+  }, 300);
+}
+
+function setAddCompanyStatus(msg, type) {
+  var el = document.getElementById('addCompanyStatus');
+  el.style.display = 'block';
+  el.textContent = msg;
+  if (type === 'info') {
+    el.style.background = 'var(--blue-bg)';
+    el.style.color = 'var(--blue)';
+  } else if (type === 'success') {
+    el.style.background = 'var(--green-bg)';
+    el.style.color = 'var(--green)';
+  } else if (type === 'error') {
+    el.style.background = 'var(--red-bg)';
+    el.style.color = 'var(--red)';
+  }
+}
+
+async function addCompanyManually() {
+  var name = document.getElementById('addCompanyName').value.trim();
+  var domain = cleanDomainInput(document.getElementById('addCompanyDomain').value);
+  var email = document.getElementById('addCompanyEmail').value.trim().toLowerCase();
+  var submitBtn = document.getElementById('addCompanySubmitBtn');
+
   if (!name || !domain) {
     alert('Company name and domain are required.');
     return;
@@ -5304,10 +5404,22 @@ function addCompanyManually() {
     alert('Please enter a valid domain (e.g. acme.com).');
     return;
   }
+
+  // Final duplicate check
+  var existingCompany = companies.find(function(c) { return c.domain === domain; });
+  if (existingCompany) {
+    alert('"' + (existingCompany.name || domain) + '" already exists in your CRM.');
+    return;
+  }
   if (isBlockedDomain(domain)) {
     alert('This domain is currently blocked. Unblock it first.');
     return;
   }
+
+  // Disable button and show progress
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Creating...';
+  setAddCompanyStatus('Creating company...', 'info');
 
   // Create entry in domainMap if it doesn't exist
   if (!domainMap[domain]) {
@@ -5322,12 +5434,12 @@ function addCompanyManually() {
   }
 
   // Add a placeholder sent message so buildCompaniesFromDomainMap includes it
-  const placeholderId = 'manual_' + domain + '_' + Date.now();
+  var placeholderId = 'manual_' + domain + '_' + Date.now();
   domainMap[domain].sentIds.add(placeholderId);
 
   // Add contact if provided
   if (email) {
-    const contactName = email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    var contactName = email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, function(l) { return l.toUpperCase(); });
     if (!domainMap[domain].contacts[email]) {
       domainMap[domain].contacts[email] = {
         name: contactName,
@@ -5339,7 +5451,7 @@ function addCompanyManually() {
     }
   } else {
     // Add a generic placeholder contact
-    const placeholder = 'contact@' + domain;
+    var placeholder = 'contact@' + domain;
     if (!domainMap[domain].contacts[placeholder]) {
       domainMap[domain].contacts[placeholder] = {
         name: name,
@@ -5360,14 +5472,95 @@ function addCompanyManually() {
   companyTypes[domain] = 'Lead';
   saveCompanyTypes();
 
-  // Rebuild and render
+  // Rebuild and render immediately so user sees the company
   persistData();
   buildCompaniesFromDomainMap();
   updateStats();
   renderTable();
-  closeAddCompanyModal();
   updateProposalCount();
   updateArchivedCount();
+
+  // Now scan emails for this domain in the background
+  setAddCompanyStatus('Scanning emails for @' + domain + '...', 'info');
+  submitBtn.textContent = 'Scanning...';
+
+  try {
+    var token = await getAccessToken();
+    var foundEmails = await scanEmailsForDomain(token, domain);
+    if (foundEmails > 0) {
+      // Rebuild with newly discovered emails/contacts
+      buildCompaniesFromDomainMap();
+      updateStats();
+      renderTable();
+      persistData();
+      setAddCompanyStatus('Done! Found ' + foundEmails + ' email' + (foundEmails !== 1 ? 's' : '') + ' and populated contacts.', 'success');
+    } else {
+      setAddCompanyStatus('Company created. No existing emails found for @' + domain + '.', 'success');
+    }
+  } catch(e) {
+    console.warn('Email scan for new company failed:', e);
+    setAddCompanyStatus('Company created. Email scan skipped (sign in to scan).', 'success');
+  }
+
+  submitBtn.textContent = 'Done';
+  setTimeout(function() {
+    closeAddCompanyModal();
+  }, 1500);
+}
+
+// Scan emails for a specific domain (used after adding a new company)
+async function scanEmailsForDomain(token, domain) {
+  var headers = graphHeaders(token);
+  var MSG_SELECT = '$select=id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime';
+  // Search for emails to/from this domain
+  var url = 'https://graph.microsoft.com/v1.0/me/messages?$top=200&' + MSG_SELECT
+    + '&$filter=contains(from/emailAddress/address,\'' + domain + '\')';
+  var totalFound = 0;
+  var pages = 0;
+  var MAX_PAGES = 5; // limit to avoid long waits
+
+  // First: fetch emails FROM this domain (received)
+  while (url && pages < MAX_PAGES) {
+    pages++;
+    try {
+      var resp = await fetch(url, { headers: headers });
+      if (!resp.ok) break;
+      var data = await resp.json();
+      var msgs = data.value || [];
+      if (msgs.length > 0) {
+        processEmailBatch(msgs);
+        totalFound += msgs.length;
+      }
+      url = data['@odata.nextLink'] || null;
+    } catch(e) {
+      console.warn('Email scan page failed:', e);
+      break;
+    }
+  }
+
+  // Second: search for emails TO this domain (sent)
+  url = 'https://graph.microsoft.com/v1.0/me/messages?$top=200&' + MSG_SELECT
+    + '&$search="to:' + domain + '"';
+  pages = 0;
+  while (url && pages < MAX_PAGES) {
+    pages++;
+    try {
+      var resp2 = await fetch(url, { headers: headers });
+      if (!resp2.ok) break;
+      var data2 = await resp2.json();
+      var msgs2 = data2.value || [];
+      if (msgs2.length > 0) {
+        processEmailBatch(msgs2);
+        totalFound += msgs2.length;
+      }
+      url = data2['@odata.nextLink'] || null;
+    } catch(e) {
+      console.warn('Sent email scan page failed:', e);
+      break;
+    }
+  }
+
+  return totalFound;
 }
 
 // ──────────────────────────────────────────────
