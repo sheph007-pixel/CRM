@@ -1901,11 +1901,27 @@ function getCompanyType(domain) {
   return companyTypes[domain] || 'Lead';
 }
 
-function setCompanyType(domain, type) {
+function setCompanyType(domain, type, selectEl) {
   companyTypes[domain] = type;
   saveCompanyTypes();
   updateTypeCounts();
-  renderTable();
+  // Update the dropdown badge class in-place instead of full re-render
+  // This prevents the dropdown from being destroyed mid-interaction
+  if (!selectEl) {
+    // Fallback: find the select that just changed
+    var allSelects = document.querySelectorAll('#tableBody .type-dropdown');
+    for (var si = 0; si < allSelects.length; si++) {
+      var s = allSelects[si];
+      if (s.closest('tr') && s.value === type) {
+        selectEl = s;
+        break;
+      }
+    }
+  }
+  if (selectEl) {
+    var newClass = type === 'Current Client' ? 'badge-hot' : type === 'Old Client' ? 'badge-cold' : 'badge-warm';
+    selectEl.className = 'type-dropdown ' + newClass;
+  }
 }
 
 function getPrimaryContact(domain, contacts) {
@@ -3776,7 +3792,7 @@ function buildCellHTML(col, c, color) {
       case 'companyType':
         var ct = getCompanyType(c.domain);
         var ctClass = ct === 'Current Client' ? 'badge-hot' : ct === 'Old Client' ? 'badge-cold' : 'badge-warm';
-        return '<select class="type-dropdown ' + ctClass + '" onchange="setCompanyType(\'' + esc(c.domain) + '\',this.value)" onclick="event.stopPropagation()">'
+        return '<select class="type-dropdown ' + ctClass + '" onchange="setCompanyType(\'' + esc(c.domain) + '\',this.value,this)" onclick="event.stopPropagation()">'
           + '<option value="Lead"' + (ct === 'Lead' ? ' selected' : '') + '>Lead</option>'
           + '<option value="Current Client"' + (ct === 'Current Client' ? ' selected' : '') + '>Current Client</option>'
           + '<option value="Old Client"' + (ct === 'Old Client' ? ' selected' : '') + '>Old Client</option>'
@@ -8637,6 +8653,8 @@ document.getElementById('tableBody').addEventListener('click', function(e) {
   // "Show more" row
   const showMore = e.target.closest('[data-action="showmore"]');
   if (showMore) { tableShowAll = true; renderTable(); return; }
+  // Skip clicks on select dropdowns and their options (type dropdown, etc.)
+  if (e.target.closest('select') || e.target.tagName === 'OPTION') return;
   // Inline editing for custom/AI cells
   if (e.target.closest('input.cell-edit')) return; // already editing
   const customCell = e.target.closest('td.custom-cell');
