@@ -470,6 +470,12 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
 .compose-footer .btn-send{background:var(--accent);color:#fff;font-weight:600;padding:7px 20px;border-radius:8px;border:none;font-size:13px;cursor:pointer;font-family:inherit;transition:.15s}
 .compose-footer .btn-send:hover{background:#1557b0}
 .compose-footer .btn-send:disabled{opacity:.5;cursor:not-allowed}
+.btn-ai{background:linear-gradient(135deg,#7c4dff,#1a73e8);color:#fff;font-weight:600;padding:7px 14px;border-radius:8px;border:none;font-size:12px;cursor:pointer;font-family:inherit;transition:.15s;display:inline-flex;align-items:center;gap:5px}
+.btn-ai:hover{opacity:.9}
+.btn-ai:disabled{opacity:.5;cursor:not-allowed}
+.btn-ai svg{width:13px;height:13px}
+.ai-populate-row{display:flex;align-items:center;gap:8px;margin:8px 0;padding:8px 12px;background:linear-gradient(135deg,rgba(124,77,255,.06),rgba(26,115,232,.06));border-radius:10px;border:1px solid rgba(124,77,255,.15)}
+.ai-populate-row .btn-ai{font-size:11px;padding:5px 10px}
 
 /* ── SETTINGS MODAL ── */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:200;display:none;place-items:center;backdrop-filter:blur(4px)}
@@ -1115,7 +1121,13 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
     <textarea id="composeBody" placeholder="Write your message..."></textarea>
   </div>
   <div class="compose-footer">
-    <span style="font-size:11px;color:var(--text2)" id="composeSendStatus"></span>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="btn-ai" id="composeAIBtn" onclick="aiDraftEmail()" title="AI writes a draft based on context">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        AI Draft
+      </button>
+      <span style="font-size:11px;color:var(--text2)" id="composeSendStatus"></span>
+    </div>
     <button class="btn-send" id="composeSendBtn" onclick="sendComposedEmail()">Send</button>
   </div>
 </div>
@@ -3052,6 +3064,8 @@ async function scanOutlookEmails(forceFullScan) {
 
     resolveCompanyNames();
     runEnrichment();
+    // Kick off background AI email scan for full email access
+    setTimeout(function() { aiScanAllEmails(); }, 2000);
 
     setTimeout(() => { hideScanBanner(); }, needsFullScan ? 4000 : 2000);
 
@@ -5135,6 +5149,24 @@ function showCompanyPanel(id) {
     '</select>' +
   '</div>';
 
+  // Enrichment info + AI populate
+  var enr = enrichmentCache[c.domain] || {};
+  var enrParts = [];
+  if (enr.industry) enrParts.push('Industry: ' + esc(enr.industry));
+  if (enr.city || enr.country) enrParts.push('Location: ' + [enr.city, enr.state, enr.country].filter(Boolean).map(function(x){ return esc(x); }).join(', '));
+  if (enr.employees) enrParts.push('Employees: ' + esc(enr.employees));
+  if (enr.founded) enrParts.push('Founded: ' + esc(String(enr.founded)));
+  var dSafeAI = c.domain.replace(/'/g, "\\'");
+  headHtml += '<div class="ai-populate-row">' +
+    '<div style="flex:1;font-size:11px;color:var(--text2)">' +
+      (enrParts.length ? enrParts.join(' &middot; ') : 'No enrichment data yet') +
+    '</div>' +
+    '<button class="btn-ai" onclick="aiPopulateCompany(\'' + dSafeAI + '\')" title="AI researches and populates company data">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>' +
+      'AI Populate' +
+    '</button>' +
+  '</div>';
+
   // Compact stats row + score + last activity
   headHtml += '<div class="dp-co-meta">' +
     '<span class="badge ' + (STATUS_CLASS[c.status] || '') + '">' + c.status + '</span>' +
@@ -7176,18 +7208,32 @@ async function sendAI() {
   aiStreaming = true;
 
   // Build system prompt with CRM data
-  var systemPrompt = 'You are Kennion AI, a personal AI assistant embedded inside the user\'s CRM. '
-    + 'You have FULL ACCESS to all of their CRM data — every company, every contact, every email subject and preview, inbox, enrichment data, scores, and more. '
+  var systemPrompt = 'You are Kennion AI, a powerful personal AI assistant embedded inside the user\'s CRM. '
+    + 'You have FULL ACCESS to all of their CRM data — every company, every contact, every email (sent & received), inbox, enrichment data, scores, and more. '
     + 'This data is provided below. USE IT to give specific, accurate, personalized answers.\n\n'
+    + 'CAPABILITIES:\n'
+    + '- Search and analyze all CRM companies, contacts, and emails\n'
+    + '- Draft emails, suggest follow-ups, and provide business strategy\n'
+    + '- Research companies using your knowledge (you know about most companies, industries, and public information)\n'
+    + '- Answer general questions about business, sales, and relationship management\n'
+    + '- Recommend actions like who to follow up with, which leads are at risk, etc.\n\n'
+    + 'CRM ACTIONS — You can suggest actions. When the user asks you to DO something (update a field, compose an email, etc.), '
+    + 'include an ACTION block at the END of your response in this exact format:\n'
+    + '[[ACTION:{"type":"set_contact_title","email":"john@acme.com","value":"VP of Sales"}]]\n'
+    + '[[ACTION:{"type":"set_company_type","domain":"acme.com","value":"Current Client"}]]\n'
+    + '[[ACTION:{"type":"compose_email","to":"john@acme.com","name":"John","subject":"Following up","body":"Hi John..."}]]\n'
+    + 'Available action types: set_contact_title, set_company_type, block_domain, star_company, compose_email\n\n'
     + 'INSTRUCTIONS:\n'
     + '- Answer conversationally like a smart human assistant who knows their entire business.\n'
     + '- When asked about a company, contact, or email, search the data below and reference specific names, emails, dates, and numbers.\n'
-    + '- You can answer general questions, draft emails, give business advice, suggest follow-up strategies, analyze engagement patterns, and more.\n'
+    + '- When asked to research a company, use your knowledge about that company/industry and combine with CRM data.\n'
     + '- When asked about emails, search through ALL the loaded emails below (subjects and previews). Quote specific subjects/previews when relevant.\n'
     + '- When asked about contacts, provide their name, email, title, LinkedIn if available, and communication stats.\n'
-    + '- If the user asks about something not in the data, say so honestly but still try to help.\n'
+    + '- If the user asks you to update data or take an action, DO IT using the ACTION format above and confirm what you did.\n'
+    + '- If the user asks about something not in the CRM data, use your general knowledge to help.\n'
     + '- Be concise but thorough. Use line breaks for readability. Bold key info with **.\n\n'
-    + buildCRMContext();
+    + buildCRMContext()
+    + buildScannedEmailsContext();
 
   // Add user message to conversation
   aiConversation.push({ role: 'user', content: msg });
@@ -7206,8 +7252,19 @@ async function sendAI() {
     aiConversation.push({ role: 'assistant', content: reply });
     var typing = document.getElementById(typingId);
     if (typing) typing.remove();
+    // Extract and execute any ACTION blocks
+    var actionResults = [];
+    var displayReply = reply.replace(/\[\[ACTION:(.*?)\]\]/g, function(match, json) {
+      try {
+        var action = JSON.parse(json);
+        aiExecuteAction(action).then(function(result) {
+          actionResults.push(result);
+        });
+      } catch(e) { /* skip malformed actions */ }
+      return '';
+    }).trim();
     // Render with basic formatting (newlines to <br>, **bold**)
-    var formatted = esc(reply).replace(/\n/g, '<br>').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+    var formatted = esc(displayReply).replace(/\n/g, '<br>').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
     msgs.innerHTML += '<div class="ai-msg bot">' + formatted + '</div>';
   } catch (e) {
     var typing = document.getElementById(typingId);
@@ -7269,6 +7326,321 @@ async function callAnthropicAPI(apiKey, systemPrompt, messages) {
   }
   var data = await resp.json();
   return data.content[0].text;
+}
+
+// ──────────────────────────────────────────────
+// AI AGENT — Background Email Scanner
+// ──────────────────────────────────────────────
+let aiScanningEmails = false;
+let aiScanProgress = { done: 0, total: 0 };
+
+async function aiScanAllEmails() {
+  if (aiScanningEmails || !currentAccount) return;
+  aiScanningEmails = true;
+  try {
+    var token = await getAccessToken();
+    var headers = graphHeaders(token);
+    // Fetch recent emails (up to 200) with body preview for AI context
+    var url = 'https://graph.microsoft.com/v1.0/me/messages?$top=200&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,conversationId&$orderby=receivedDateTime desc';
+    var resp = await fetch(url, { headers: headers });
+    if (!resp.ok) { aiScanningEmails = false; return; }
+    var data = await resp.json();
+    var msgs = data.value || [];
+    aiScanProgress.total = msgs.length;
+    aiScanProgress.done = 0;
+    // Store all email previews in a global cache for AI
+    if (!window.aiEmailScanCache) window.aiEmailScanCache = [];
+    msgs.forEach(function(m) {
+      var fromAddr = (m.from && m.from.emailAddress ? m.from.emailAddress.address : '') || '';
+      var fromName = (m.from && m.from.emailAddress ? m.from.emailAddress.name : '') || '';
+      var toList = (m.toRecipients || []).map(function(r) { return r.emailAddress ? r.emailAddress.address : ''; }).join(', ');
+      // Avoid duplicates
+      var exists = window.aiEmailScanCache.some(function(e) { return e.id === m.id; });
+      if (!exists) {
+        window.aiEmailScanCache.push({
+          id: m.id,
+          subject: m.subject || '(no subject)',
+          from: fromName + ' <' + fromAddr + '>',
+          to: toList,
+          date: m.receivedDateTime || m.sentDateTime,
+          preview: m.bodyPreview || ''
+        });
+      }
+      aiScanProgress.done++;
+    });
+    // Now fetch full bodies for top 50 most recent (batch of 5 at a time)
+    var toFetch = msgs.slice(0, 50).filter(function(m) { return !emailBodyCache[m.id]; });
+    for (var i = 0; i < toFetch.length; i += 5) {
+      var batch = toFetch.slice(i, i + 5);
+      await Promise.all(batch.map(async function(m) {
+        try {
+          var r = await fetch('https://graph.microsoft.com/v1.0/me/messages/' + m.id + '?$select=subject,from,body,receivedDateTime,sentDateTime', { headers: headers });
+          if (r.ok) {
+            var msg = await r.json();
+            var bodyContent = msg.body && msg.body.content ? msg.body.content : '';
+            var bodyType = msg.body && msg.body.contentType ? msg.body.contentType : 'text';
+            var plainText = bodyType === 'html' ? htmlToPlainText(bodyContent) : bodyContent;
+            var fromName = msg.from && msg.from.emailAddress ? msg.from.emailAddress.name : '';
+            var fromAddr = msg.from && msg.from.emailAddress ? msg.from.emailAddress.address : '';
+            emailBodyCache[m.id] = {
+              subject: msg.subject || '',
+              from: fromName + ' <' + fromAddr + '>',
+              date: new Date(msg.receivedDateTime || msg.sentDateTime).toLocaleDateString(),
+              plainText: plainText.substring(0, 3000)
+            };
+          }
+        } catch(e) { /* skip failed fetches */ }
+      }));
+    }
+  } catch(e) { console.warn('AI email scan error:', e); }
+  aiScanningEmails = false;
+}
+
+// ──────────────────────────────────────────────
+// AI AGENT — Email Draft Composer
+// ──────────────────────────────────────────────
+async function aiDraftEmail() {
+  var apiKey = getAIKey();
+  if (!apiKey) {
+    document.getElementById('composeSendStatus').textContent = 'Add your AI key in Settings first';
+    document.getElementById('composeSendStatus').style.color = 'var(--red)';
+    return;
+  }
+  var btn = document.getElementById('composeAIBtn');
+  btn.disabled = true;
+  btn.textContent = 'Drafting...';
+  var status = document.getElementById('composeSendStatus');
+  status.textContent = 'AI is writing...';
+  status.style.color = 'var(--accent)';
+
+  var toField = document.getElementById('composeTo');
+  var toEmail = toField.dataset.email || '';
+  var toName = toField.value.replace(/<.*>/, '').trim();
+  var subject = document.getElementById('composeSubject').value.trim();
+  var existingBody = document.getElementById('composeBody').value;
+
+  // Gather context about this contact
+  var contactCtx = '';
+  if (toEmail) {
+    var lowerEmail = toEmail.toLowerCase();
+    // Find company
+    for (var domain in domainMap) {
+      var dm = domainMap[domain];
+      if (dm.contacts[lowerEmail]) {
+        var ct = dm.contacts[lowerEmail];
+        var comp = companies.find(function(c) { return c.domain === domain; });
+        var enr = enrichmentCache[domain] || {};
+        var ce = contactEnrichment[lowerEmail] || {};
+        contactCtx += 'Recipient: ' + ct.name + ' <' + lowerEmail + '>\n';
+        if (ce.title) contactCtx += 'Title: ' + ce.title + '\n';
+        if (comp) {
+          contactCtx += 'Company: ' + comp.name + ' (' + domain + '), Status: ' + comp.status + ', Score: ' + comp.score + '\n';
+          contactCtx += 'Sent: ' + comp.sent + ', Received: ' + comp.received + '\n';
+          if (enr.industry) contactCtx += 'Industry: ' + enr.industry + '\n';
+        }
+        // Recent email history with this contact
+        if (contactTimelineCache[lowerEmail]) {
+          contactCtx += 'Recent email history:\n';
+          contactTimelineCache[lowerEmail].slice(0, 10).forEach(function(e) {
+            contactCtx += '  [' + e.type + '] ' + e.subject + ' (' + new Date(e.date).toLocaleDateString() + ') — ' + (e.preview || '') + '\n';
+          });
+        }
+        break;
+      }
+    }
+  }
+
+  // Check if there's quoted text (reply)
+  var isReply = existingBody.indexOf('\n> ') > -1 || existingBody.indexOf('\nOn ') > -1;
+  var quotedPart = '';
+  if (isReply) {
+    var onIdx = existingBody.indexOf('\n\nOn ');
+    if (onIdx > -1) quotedPart = existingBody.substring(onIdx);
+  }
+
+  var prompt = 'You are drafting an email on behalf of the user. Write ONLY the email body text — no subject line, no "Dear" unless appropriate, no signature (the system adds one automatically).\n\n';
+  prompt += 'Recipient: ' + (toName || toEmail) + '\n';
+  prompt += 'Subject: ' + (subject || '(none set)') + '\n';
+  if (isReply) prompt += 'This is a REPLY. Write a professional reply based on the conversation thread below.\n';
+  else prompt += 'This is a NEW email.\n';
+  if (contactCtx) prompt += '\nCONTACT CONTEXT:\n' + contactCtx + '\n';
+  if (quotedPart) prompt += '\nPREVIOUS CONVERSATION:\n' + quotedPart + '\n';
+  prompt += '\nWrite a concise, professional email. Match the tone of previous conversations if available. Keep it natural and human-sounding.';
+
+  try {
+    var provider = getAIProvider();
+    var reply = '';
+    if (provider === 'anthropic') {
+      reply = await callAnthropicAPI(apiKey, prompt, [{ role: 'user', content: 'Draft this email now.' }]);
+    } else {
+      reply = await callOpenAIAPI(apiKey, prompt, [{ role: 'user', content: 'Draft this email now.' }]);
+    }
+    // Insert AI draft at cursor position (top of compose)
+    var sig = getEmailSignature();
+    var sigBlock = sig ? '\n\n' + sig : '';
+    if (isReply) {
+      document.getElementById('composeBody').value = reply.trim() + sigBlock + quotedPart;
+    } else {
+      document.getElementById('composeBody').value = reply.trim() + sigBlock;
+    }
+    status.textContent = 'AI draft inserted — review and edit before sending';
+    status.style.color = 'var(--green)';
+  } catch(e) {
+    status.textContent = 'AI draft failed: ' + (e.message || 'Unknown error');
+    status.style.color = 'var(--red)';
+  }
+  btn.disabled = false;
+  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> AI Draft';
+}
+
+// ──────────────────────────────────────────────
+// AI AGENT — Company Data Population + Web Research
+// ──────────────────────────────────────────────
+async function aiPopulateCompany(domain) {
+  var apiKey = getAIKey();
+  if (!apiKey) { alert('Add your AI API key in Settings first.'); return; }
+  var comp = companies.find(function(c) { return c.domain === domain; });
+  if (!comp) return;
+
+  // Find and disable button
+  var btns = document.querySelectorAll('.ai-populate-row .btn-ai');
+  var btn = null;
+  for (var i = 0; i < btns.length; i++) { if (btns[i].onclick && btns[i].closest('.ai-populate-row')) { btn = btns[i]; break; } }
+  if (btn) { btn.disabled = true; btn.textContent = 'Researching...'; }
+
+  var enr = enrichmentCache[domain] || {};
+  var ce = {};
+  if (comp.allContacts) {
+    comp.allContacts.forEach(function(ct) {
+      var enrichData = contactEnrichment[ct.email] || {};
+      ce[ct.email] = { name: ct.name, title: enrichData.title || '', linkedin: enrichData.linkedin || '' };
+    });
+  }
+
+  // Gather email context for this company
+  var emailCtx = '';
+  if (comp.allContacts) {
+    comp.allContacts.forEach(function(ct) {
+      if (contactTimelineCache[ct.email]) {
+        contactTimelineCache[ct.email].slice(0, 10).forEach(function(e) {
+          emailCtx += '[' + e.type + '] ' + e.subject + ' — ' + (e.preview || '') + '\n';
+        });
+      }
+    });
+  }
+
+  var prompt = 'You are a CRM data enrichment AI. Based on the company info, email communication history, and your knowledge, provide enrichment data for this company.\n\n';
+  prompt += 'Company: ' + comp.name + '\n';
+  prompt += 'Domain: ' + domain + '\n';
+  prompt += 'Current data: ' + JSON.stringify(enr) + '\n';
+  prompt += 'Contacts: ' + JSON.stringify(ce) + '\n';
+  if (emailCtx) prompt += 'Email history:\n' + emailCtx.substring(0, 3000) + '\n';
+  prompt += '\nProvide a JSON response with these fields (fill in what you know, use null for unknowns):\n';
+  prompt += '{\n  "industry": "e.g. Technology, Healthcare, Finance...",\n  "employees": "e.g. 50-100, 500+, 10000+...",\n';
+  prompt += '  "city": "headquarters city",\n  "state": "state/province",\n  "country": "country",\n';
+  prompt += '  "founded": "year founded",\n  "type": "e.g. SaaS, Agency, Enterprise, Startup...",\n';
+  prompt += '  "description": "1-2 sentence company description",\n';
+  prompt += '  "contacts": { "email": { "title": "job title" } }\n}\n';
+  prompt += 'ONLY respond with valid JSON, nothing else.';
+
+  try {
+    var provider = getAIProvider();
+    var reply = '';
+    if (provider === 'anthropic') {
+      reply = await callAnthropicAPI(apiKey, prompt, [{ role: 'user', content: 'Research and enrich this company now.' }]);
+    } else {
+      reply = await callOpenAIAPI(apiKey, prompt, [{ role: 'user', content: 'Research and enrich this company now.' }]);
+    }
+    // Parse JSON from response
+    var jsonMatch = reply.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      var result = JSON.parse(jsonMatch[0]);
+      // Update enrichment cache
+      if (!enrichmentCache[domain]) enrichmentCache[domain] = {};
+      var ec = enrichmentCache[domain];
+      if (result.industry && !ec.industry) ec.industry = result.industry;
+      if (result.employees && !ec.employees) ec.employees = result.employees;
+      if (result.city && !ec.city) ec.city = result.city;
+      if (result.state && !ec.state) ec.state = result.state;
+      if (result.country && !ec.country) ec.country = result.country;
+      if (result.founded && !ec.founded) ec.founded = result.founded;
+      if (result.type && !ec.type) ec.type = result.type;
+      if (result.description) ec.description = result.description;
+      localStorage.setItem('kennion_enrichment', JSON.stringify(enrichmentCache));
+      // Update contact titles
+      if (result.contacts) {
+        for (var email in result.contacts) {
+          if (result.contacts[email].title) {
+            setContactTitle(email.toLowerCase(), result.contacts[email].title);
+          }
+        }
+      }
+      // Refresh the panel
+      showCompanyPanel(comp.id);
+      renderTable();
+    }
+  } catch(e) {
+    console.error('AI populate error:', e);
+    alert('AI populate failed: ' + (e.message || 'Unknown error'));
+  }
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> AI Populate';
+  }
+}
+
+// ──────────────────────────────────────────────
+// AI AGENT — CRM Action Execution (chat can trigger actions)
+// ──────────────────────────────────────────────
+async function aiExecuteAction(action) {
+  try {
+    if (action.type === 'set_company_type' && action.domain && action.value) {
+      setCompanyType(action.domain, action.value);
+      return 'Updated ' + action.domain + ' type to ' + action.value;
+    }
+    if (action.type === 'set_contact_title' && action.email && action.value) {
+      setContactTitle(action.email.toLowerCase(), action.value);
+      return 'Updated contact title for ' + action.email;
+    }
+    if (action.type === 'block_domain' && action.domain) {
+      blockedDomains.add(action.domain);
+      saveBlockedDomains();
+      return 'Blocked ' + action.domain;
+    }
+    if (action.type === 'star_company' && action.domain) {
+      toggleCompanyStar(action.domain);
+      return 'Toggled star for ' + action.domain;
+    }
+    if (action.type === 'compose_email' && action.to) {
+      openCompose(action.to, action.name || '', action.subject || '', '', '', '');
+      if (action.body) {
+        setTimeout(function() {
+          var sig = getEmailSignature();
+          document.getElementById('composeBody').value = action.body + (sig ? '\n\n' + sig : '');
+        }, 200);
+      }
+      return 'Opened compose window for ' + action.to;
+    }
+  } catch(e) { return 'Action failed: ' + e.message; }
+  return 'Unknown action type: ' + action.type;
+}
+
+// ──────────────────────────────────────────────
+// AI AGENT — Enhanced sendAI with tool use and web search
+// ──────────────────────────────────────────────
+
+// Include scanned emails in context
+function buildScannedEmailsContext() {
+  var ctx = '';
+  if (window.aiEmailScanCache && window.aiEmailScanCache.length > 0) {
+    ctx += '\nSCANNED EMAILS (' + window.aiEmailScanCache.length + ' from mailbox):\n';
+    window.aiEmailScanCache.forEach(function(e) {
+      ctx += '  From: ' + e.from + ' | To: ' + e.to + ' | Subject: "' + e.subject + '" | Date: ' + new Date(e.date).toLocaleDateString();
+      if (e.preview) ctx += ' | ' + e.preview.substring(0, 150);
+      ctx += '\n';
+    });
+  }
+  return ctx;
 }
 
 const _escMap = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
