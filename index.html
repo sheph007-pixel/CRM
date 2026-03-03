@@ -1149,6 +1149,31 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
           </div>
         </div>
 
+        <!-- EMAIL THROTTLE -->
+        <div class="settings-card">
+          <div class="settings-card-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <h3>Email Throttle</h3>
+          </div>
+          <p class="settings-desc">Limit outbound emails from this system to prevent accidental mass sends and stay within provider limits.</p>
+          <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <label style="font-size:12px;color:var(--text2);min-width:110px">Max per hour</label>
+              <input type="number" id="settingsThrottlePerHour" min="1" max="1000" placeholder="30" style="width:80px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <label style="font-size:12px;color:var(--text2);min-width:110px">Max per day</label>
+              <input type="number" id="settingsThrottlePerDay" min="1" max="10000" placeholder="200" style="width:80px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+            <button class="btn btn-primary btn-sm" onclick="saveThrottleSettings()">Save</button>
+            <span id="throttleSaveStatus" style="font-size:12px;color:#34a853;opacity:0;transition:opacity .3s"></span>
+            <span id="throttleUsageStatus" style="font-size:11px;color:var(--text2);margin-left:auto"></span>
+          </div>
+          <div style="font-size:11px;color:var(--text2);margin-top:8px;line-height:1.5">Limits reset on a rolling window. Leave blank to disable throttling.</div>
+        </div>
+
       </div>
     </div>
 
@@ -2386,6 +2411,7 @@ function gatherSyncPayload() {
     client_id: getClientId(),
     email_signature: getEmailSignature(),
     openai_key: getOpenAIKey(),
+    email_throttle: getThrottleSettings(),
   };
 
   // Collect domain data — COMPACT format for cloud.
@@ -2565,6 +2591,12 @@ function applyCloudSettings(data) {
   if (s.openai_key && !getOpenAIKey()) {
     localStorage.setItem('kennion_openai_key', s.openai_key);
     loadAISettings();
+  }
+  if (s.email_throttle) {
+    var local = getThrottleSettings();
+    if (!local.perHour && !local.perDay) {
+      saveThrottleSettingsToStorage(s.email_throttle);
+    }
   }
 }
 
@@ -6985,6 +7017,14 @@ async function sendComposedEmail() {
     return;
   }
 
+  // Check email throttle limits
+  var throttleMsg = checkEmailThrottle();
+  if (throttleMsg) {
+    document.getElementById('composeSendStatus').textContent = throttleMsg;
+    document.getElementById('composeSendStatus').style.color = 'var(--red)';
+    return;
+  }
+
   var btn = document.getElementById('composeSendBtn');
   var status = document.getElementById('composeSendStatus');
   btn.disabled = true;
@@ -7014,6 +7054,7 @@ async function sendComposedEmail() {
     }
     if (!resp.ok) { var err = await resp.text(); throw new Error('Send failed: ' + resp.status + ' — ' + err); }
 
+    logEmailSend();
     status.textContent = 'Sent!';
     status.style.color = 'var(--green)';
     delete contactTimelineCache[toEmail.toLowerCase()];
@@ -7041,6 +7082,89 @@ function getEmailSignature() {
 
 function saveEmailSignature(sig) {
   localStorage.setItem('kennion_email_signature', sig);
+}
+
+// ── EMAIL THROTTLE ──
+function getThrottleSettings() {
+  try {
+    var raw = localStorage.getItem('kennion_email_throttle');
+    return raw ? JSON.parse(raw) : { perHour: 0, perDay: 0 };
+  } catch(e) { return { perHour: 0, perDay: 0 }; }
+}
+
+function saveThrottleSettingsToStorage(settings) {
+  localStorage.setItem('kennion_email_throttle', JSON.stringify(settings));
+  scheduleCloudSync();
+}
+
+function getEmailSendLog() {
+  try {
+    var raw = localStorage.getItem('kennion_email_send_log');
+    return raw ? JSON.parse(raw) : [];
+  } catch(e) { return []; }
+}
+
+function logEmailSend() {
+  var log = getEmailSendLog();
+  log.push(Date.now());
+  // Keep only the last 24 hours of entries
+  var cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  log = log.filter(function(t) { return t > cutoff; });
+  localStorage.setItem('kennion_email_send_log', JSON.stringify(log));
+}
+
+function checkEmailThrottle() {
+  var settings = getThrottleSettings();
+  if (!settings.perHour && !settings.perDay) return null; // no limits set
+  var log = getEmailSendLog();
+  var now = Date.now();
+  if (settings.perHour) {
+    var hourAgo = now - 60 * 60 * 1000;
+    var sentLastHour = log.filter(function(t) { return t > hourAgo; }).length;
+    if (sentLastHour >= settings.perHour) {
+      return 'Hourly limit reached (' + settings.perHour + '/hr). Try again later.';
+    }
+  }
+  if (settings.perDay) {
+    var dayAgo = now - 24 * 60 * 60 * 1000;
+    var sentLastDay = log.filter(function(t) { return t > dayAgo; }).length;
+    if (sentLastDay >= settings.perDay) {
+      return 'Daily limit reached (' + settings.perDay + '/day). Try again later.';
+    }
+  }
+  return null;
+}
+
+function saveThrottleSettings() {
+  var perHour = parseInt(document.getElementById('settingsThrottlePerHour').value) || 0;
+  var perDay = parseInt(document.getElementById('settingsThrottlePerDay').value) || 0;
+  saveThrottleSettingsToStorage({ perHour: perHour, perDay: perDay });
+  var statusEl = document.getElementById('throttleSaveStatus');
+  statusEl.textContent = 'Saved!';
+  statusEl.style.opacity = '1';
+  setTimeout(function() { statusEl.style.opacity = '0'; }, 2000);
+  updateThrottleUsage();
+}
+
+function updateThrottleUsage() {
+  var el = document.getElementById('throttleUsageStatus');
+  if (!el) return;
+  var log = getEmailSendLog();
+  var now = Date.now();
+  var hourAgo = now - 60 * 60 * 1000;
+  var dayAgo = now - 24 * 60 * 60 * 1000;
+  var sentHour = log.filter(function(t) { return t > hourAgo; }).length;
+  var sentDay = log.filter(function(t) { return t > dayAgo; }).length;
+  el.textContent = 'Sent: ' + sentHour + ' this hour, ' + sentDay + ' today';
+}
+
+function loadThrottleSettings() {
+  var settings = getThrottleSettings();
+  var hourEl = document.getElementById('settingsThrottlePerHour');
+  var dayEl = document.getElementById('settingsThrottlePerDay');
+  if (hourEl) hourEl.value = settings.perHour || '';
+  if (dayEl) dayEl.value = settings.perDay || '';
+  updateThrottleUsage();
 }
 
 function saveSignatureFromSettings() {
@@ -7164,6 +7288,7 @@ function showSettingsView() {
   renderBlockedDomainsList();
   updateBlockedSyncStatus();
   loadAISettings();
+  loadThrottleSettings();
   // Show connected state or setup state
   if (currentAccount) {
     document.getElementById('settingsConnectedState').style.display = '';
