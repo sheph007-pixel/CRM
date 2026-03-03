@@ -1616,15 +1616,21 @@ function saveContactEnrichment() {
   localStorage.setItem('kennion_contact_enrich', JSON.stringify(contactEnrichment));
 }
 
-// Company logo: Clearbit Logo API (free, no auth)
+// Company logo: Google Favicon API (reliable, free) with Clearbit fallback
 let logoFailedCache = {};
 function loadLogoFailedCache() {
-  try { const r = localStorage.getItem('kennion_logo_failed'); if (r) logoFailedCache = JSON.parse(r); } catch(e) {}
+  try { const r = localStorage.getItem('kennion_logo_failed_v2'); if (r) logoFailedCache = JSON.parse(r); } catch(e) {}
 }
 function saveLogoFailedCache() {
-  localStorage.setItem('kennion_logo_failed', JSON.stringify(logoFailedCache));
+  localStorage.setItem('kennion_logo_failed_v2', JSON.stringify(logoFailedCache));
 }
 function markLogoFailed(img, domain) {
+  // Google favicon failed — try Clearbit as fallback
+  var clearbitSrc = 'https://logo.clearbit.com/' + encodeURIComponent(domain);
+  img.onerror = function() { markLogoFinalFailed(img, domain); };
+  img.src = clearbitSrc;
+}
+function markLogoFinalFailed(img, domain) {
   img.style.display = 'none';
   logoFailedCache[domain] = true;
   saveLogoFailedCache();
@@ -1633,7 +1639,8 @@ function companyLogoHTML(domain, color, name, size) {
   const sz = size || 32;
   const initial = name ? name[0].toUpperCase() : domain[0].toUpperCase();
   if (logoFailedCache[domain]) return initial;
-  const imgSrc = 'https://logo.clearbit.com/' + encodeURIComponent(domain);
+  const faviconSz = sz >= 44 ? 128 : 64;
+  const imgSrc = 'https://www.google.com/s2/favicons?domain=' + encodeURIComponent(domain) + '&sz=' + faviconSz;
   return '<img src="' + imgSrc + '" alt="" loading="lazy" onerror="markLogoFailed(this,\'' + domain.replace(/'/g, "\\'") + '\')">' + initial;
 }
 
