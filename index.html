@@ -2036,6 +2036,31 @@ function saveStarredCompanies() {
   scheduleCloudSync();
 }
 
+// PROPOSAL NOTES & STAGES PERSISTENCE
+var proposalNotes = {};   // { domain: "note text" }
+var proposalStages = {};  // { domain: "Proposal Due" | "Proposal Sent" | "Onboarding" }
+
+function loadProposalData() {
+  try {
+    var raw = localStorage.getItem('kennion_proposal_notes');
+    proposalNotes = raw ? JSON.parse(raw) : {};
+  } catch(e) { proposalNotes = {}; }
+  try {
+    var raw2 = localStorage.getItem('kennion_proposal_stages');
+    proposalStages = raw2 ? JSON.parse(raw2) : {};
+  } catch(e) { proposalStages = {}; }
+}
+
+function saveProposalNotes() {
+  localStorage.setItem('kennion_proposal_notes', JSON.stringify(proposalNotes));
+  scheduleCloudSync();
+}
+
+function saveProposalStages() {
+  localStorage.setItem('kennion_proposal_stages', JSON.stringify(proposalStages));
+  scheduleCloudSync();
+}
+
 // ──────────────────────────────────────────────
 // ARCHIVED COMPANIES PERSISTENCE
 // ──────────────────────────────────────────────
@@ -2441,6 +2466,8 @@ function gatherSyncPayload() {
     email_signature: getEmailSignature(),
     openai_key: getOpenAIKey(),
     email_throttle: getThrottleSettings(),
+    proposal_notes: proposalNotes,
+    proposal_stages: proposalStages,
   };
 
   // Collect domain data — COMPACT format for cloud.
@@ -2626,6 +2653,14 @@ function applyCloudSettings(data) {
     if (!local.perHour && !local.perDay) {
       saveThrottleSettingsToStorage(s.email_throttle);
     }
+  }
+  if (s.proposal_notes && Object.keys(s.proposal_notes).length > 0) {
+    for (var k in s.proposal_notes) { if (!proposalNotes[k]) proposalNotes[k] = s.proposal_notes[k]; }
+    saveProposalNotes();
+  }
+  if (s.proposal_stages && Object.keys(s.proposal_stages).length > 0) {
+    for (var k in s.proposal_stages) { if (!proposalStages[k]) proposalStages[k] = s.proposal_stages[k]; }
+    saveProposalStages();
   }
 }
 
@@ -3885,6 +3920,132 @@ function buildCellHTML(col, c, color) {
   return '<span class="cell-val">' + esc(val) + '</span>';
 }
 
+// ── PROPOSALS TABLE ──
+var PROPOSAL_STAGES = [
+  { value: '', label: 'No Stage', color: 'var(--text2)', bg: 'transparent' },
+  { value: 'Proposal Due', label: 'Proposal Due', color: '#d93025', bg: 'rgba(217,48,37,.1)' },
+  { value: 'Proposal Sent', label: 'Proposal Sent', color: '#e8710a', bg: 'rgba(232,113,10,.1)' },
+  { value: 'Onboarding', label: 'Onboarding', color: '#1e8e3e', bg: 'rgba(30,142,62,.1)' },
+];
+
+function setProposalStage(domain, value) {
+  if (value) proposalStages[domain] = value;
+  else delete proposalStages[domain];
+  saveProposalStages();
+  var sel = document.querySelector('select.proposal-stage[data-domain="' + domain + '"]');
+  if (sel) {
+    var st = PROPOSAL_STAGES.find(function(s) { return s.value === value; }) || PROPOSAL_STAGES[0];
+    sel.style.color = st.color;
+    sel.style.background = st.bg;
+    sel.style.borderColor = st.color;
+  }
+}
+
+function setProposalNote(domain, value) {
+  if (value.trim()) proposalNotes[domain] = value.trim();
+  else delete proposalNotes[domain];
+  saveProposalNotes();
+}
+
+function renderProposalsTable() {
+  var thead = document.getElementById('tableHead');
+  thead.innerHTML = '<tr>'
+    + '<th style="width:30px"><input type="checkbox" class="row-checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this.checked)"></th>'
+    + '<th onclick="sortTable(\'company\')" style="cursor:pointer">Company</th>'
+    + '<th onclick="sortTable(\'contact\')" style="cursor:pointer">Primary Contact</th>'
+    + '<th onclick="sortTable(\'lastActivity\')" style="cursor:pointer">Last Email</th>'
+    + '<th>Notes</th>'
+    + '<th style="width:145px">Stage</th>'
+    + '</tr>';
+
+  var data = companies.filter(function(c) {
+    return starredCompanies.has(c.domain) && !archivedCompanies.has(c.domain) && !flaggedCompanies.has(c.domain);
+  });
+
+  var q = (document.getElementById('searchInput').value || '').toLowerCase();
+  if (q) {
+    data = data.filter(function(c) {
+      return c.name.toLowerCase().includes(q) || c.contact.toLowerCase().includes(q) || c.domain.toLowerCase().includes(q)
+        || (proposalNotes[c.domain] || '').toLowerCase().includes(q)
+        || (proposalStages[c.domain] || '').toLowerCase().includes(q);
+    });
+  }
+
+  var sortKey = currentSort.key || 'company';
+  data.sort(function(a, b) {
+    var va, vb;
+    if (sortKey === 'company') { va = (a.name || '').toLowerCase(); vb = (b.name || '').toLowerCase(); }
+    else if (sortKey === 'contact') { va = (a.contact || '').toLowerCase(); vb = (b.contact || '').toLowerCase(); }
+    else if (sortKey === 'lastActivity') { va = a.lastDate ? a.lastDate.getTime() : 0; vb = b.lastDate ? b.lastDate.getTime() : 0; }
+    else { va = a.name.toLowerCase(); vb = b.name.toLowerCase(); }
+    if (va < vb) return currentSort.asc ? -1 : 1;
+    if (va > vb) return currentSort.asc ? 1 : -1;
+    return 0;
+  });
+
+  var tbody = document.getElementById('tableBody');
+  if (data.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text2)">No proposals yet. Star a company to add it here.</td></tr>';
+    updateViewTitleCount(0);
+    return;
+  }
+
+  var rows = [];
+  for (var i = 0; i < data.length; i++) {
+    var c = data[i];
+    var color = COLORS[c.id % COLORS.length];
+    var sel = selectedIds.has(c.id);
+    var dSafe = c.domain.replace(/'/g, "\\'");
+    var stage = proposalStages[c.domain] || '';
+    var stageDef = PROPOSAL_STAGES.find(function(s) { return s.value === stage; }) || PROPOSAL_STAGES[0];
+    var note = proposalNotes[c.domain] || '';
+
+    var row = '<tr' + (sel ? ' class="row-selected"' : '') + ' data-id="' + c.id + '">';
+    row += '<td class="col-check"><input type="checkbox" class="row-checkbox"' + (sel ? ' checked' : '') + ' data-rid="' + c.id + '"></td>';
+
+    // Company
+    var isStarred = starredCompanies.has(c.domain);
+    row += '<td><div class="company-cell">'
+      + '<button class="row-star' + (isStarred ? ' active' : '') + '" onclick="event.stopPropagation();toggleCompanyStar(\'' + dSafe + '\')" title="Remove from Proposals">&#9733;</button>'
+      + '<div class="company-logo" style="background:' + color + '">' + companyLogoHTML(c.domain, color, c.name) + '</div>'
+      + '<div class="company-info"><span class="company-name">' + esc(c.name) + '</span><span class="company-domain">' + esc(c.domain) + '</span></div>'
+      + '</div></td>';
+
+    // Primary Contact
+    var initials = c.contact ? c.contact.split(' ').map(function(n){return n[0]}).join('').substring(0,2) : '';
+    var ctTitle = getContactTitle(c.contactEmail || '');
+    row += '<td><div class="contact-cell"><div class="avatar" style="background:' + color + '">' + contactPhotoHTML(c.contactEmail || '', color, initials) + '</div><div><span class="contact-name">' + esc(c.contact) + '</span>' + (ctTitle ? '<div class="contact-title">' + esc(ctTitle) + '</div>' : '') + '</div></div></td>';
+
+    // Last Email
+    row += '<td><span style="color:var(--text2)">' + esc(c.lastActivity) + '</span></td>';
+
+    // Notes
+    row += '<td><input type="text" class="proposal-note-input" data-domain="' + esc(c.domain) + '" value="' + esc(note).replace(/"/g, '&quot;') + '" placeholder="Add a note..." '
+      + 'onclick="event.stopPropagation()" '
+      + 'onchange="setProposalNote(\'' + dSafe + '\',this.value)" '
+      + 'style="width:100%;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;box-sizing:border-box">'
+      + '</td>';
+
+    // Stage
+    row += '<td><select class="proposal-stage" data-domain="' + esc(c.domain) + '" '
+      + 'onclick="event.stopPropagation()" '
+      + 'onchange="setProposalStage(\'' + dSafe + '\',this.value)" '
+      + 'style="width:100%;padding:6px 10px;border-radius:6px;font-size:12px;font-family:inherit;font-weight:600;outline:none;cursor:pointer;border:1px solid ' + stageDef.color + ';color:' + stageDef.color + ';background:' + stageDef.bg + '">';
+    for (var si = 0; si < PROPOSAL_STAGES.length; si++) {
+      var s = PROPOSAL_STAGES[si];
+      row += '<option value="' + s.value + '"' + (stage === s.value ? ' selected' : '') + '>' + s.label + '</option>';
+    }
+    row += '</select></td>';
+
+    row += '</tr>';
+    rows.push(row);
+  }
+
+  tbody.innerHTML = rows.join('');
+  updateBulkBar();
+  updateViewTitleCount(data.length);
+}
+
 // Map sort column IDs to actual data properties
 function _getSortVal(c, colKey) {
   if (colKey === 'company') return (c.name || '').toString();
@@ -3902,6 +4063,10 @@ function renderTable() {
   if (showingArchived) { showArchivedView(); return; }
   if (showingFlagged) { showFlaggedView(); return; }
   if (showingBlocked) { return; }
+  if (showingProposals) { renderProposalsTable(); return; }
+
+  // Restore stats section (hidden by proposals view)
+  document.getElementById('statsSection').style.display = '';
 
   // Restore normal table header (in case we're returning from flagged/archived view)
   renderTableHeader();
@@ -3919,11 +4084,6 @@ function renderTable() {
 
   // Hide archived and flagged companies from normal views
   data = data.filter(c => !archivedCompanies.has(c.domain) && !flaggedCompanies.has(c.domain));
-
-  // If showing proposals, only show starred companies
-  if (showingProposals) {
-    data = data.filter(c => starredCompanies.has(c.domain));
-  }
 
   if (currentFilter !== 'all') {
     data = data.filter(c => c.status === currentFilter);
@@ -5385,6 +5545,8 @@ function showProposals() {
   document.getElementById('detailPage').classList.remove('active');
   document.querySelectorAll('.sidebar-item').forEach(e => e.classList.remove('active'));
   document.getElementById('proposalNavItem').classList.add('active');
+  // Hide stats cards — not relevant for proposals view
+  document.getElementById('statsSection').style.display = 'none';
   setViewTitle('Proposals', false);
   clearSelection();
   renderTable();
@@ -6043,8 +6205,31 @@ function showCompanyPanel(id) {
 
   document.getElementById('dpCompanyBanner').innerHTML = bannerHtml;
 
-  // Left head is now empty (contacts list starts directly)
-  document.getElementById('dpLeftHead').innerHTML = '';
+  // Proposal notes section (below banner)
+  var dpNote = proposalNotes[c.domain] || '';
+  var dpStage = proposalStages[c.domain] || '';
+  var dpStageDef = PROPOSAL_STAGES.find(function(s) { return s.value === dpStage; }) || PROPOSAL_STAGES[0];
+  var dSafeDP = c.domain.replace(/'/g, "\\'");
+  document.getElementById('dpLeftHead').innerHTML =
+    '<div style="padding:10px 16px;display:flex;flex-direction:column;gap:8px">' +
+      '<div style="display:flex;align-items:center;gap:8px">' +
+        '<span style="font-size:11px;color:var(--text2);min-width:40px">Stage</span>' +
+        '<select class="proposal-stage" data-domain="' + esc(c.domain) + '" ' +
+          'onchange="setProposalStage(\'' + dSafeDP + '\',this.value);this.style.color=({\'Proposal Due\':\'#d93025\',\'Proposal Sent\':\'#e8710a\',\'Onboarding\':\'#1e8e3e\'}[this.value]||\'var(--text2)\');this.style.borderColor=this.style.color;this.style.background=({\'Proposal Due\':\'rgba(217,48,37,.1)\',\'Proposal Sent\':\'rgba(232,113,10,.1)\',\'Onboarding\':\'rgba(30,142,62,.1)\'}[this.value]||\'transparent\')" ' +
+          'style="flex:1;padding:6px 10px;border-radius:6px;font-size:12px;font-family:inherit;font-weight:600;outline:none;cursor:pointer;border:1px solid ' + dpStageDef.color + ';color:' + dpStageDef.color + ';background:' + dpStageDef.bg + '">' +
+          '<option value=""' + (!dpStage ? ' selected' : '') + '>No Stage</option>' +
+          '<option value="Proposal Due"' + (dpStage === 'Proposal Due' ? ' selected' : '') + '>Proposal Due</option>' +
+          '<option value="Proposal Sent"' + (dpStage === 'Proposal Sent' ? ' selected' : '') + '>Proposal Sent</option>' +
+          '<option value="Onboarding"' + (dpStage === 'Onboarding' ? ' selected' : '') + '>Onboarding</option>' +
+        '</select>' +
+      '</div>' +
+      '<div style="display:flex;align-items:start;gap:8px">' +
+        '<span style="font-size:11px;color:var(--text2);min-width:40px;padding-top:7px">Notes</span>' +
+        '<textarea data-domain="' + esc(c.domain) + '" placeholder="Add notes about this company..." ' +
+          'onchange="setProposalNote(\'' + dSafeDP + '\',this.value)" ' +
+          'style="flex:1;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;resize:vertical;min-height:50px;box-sizing:border-box">' + esc(dpNote) + '</textarea>' +
+      '</div>' +
+    '</div>';
 
   // Left panel tabs (Relationships / Files)
   currentLeftTab = 'relationships';
@@ -8854,6 +9039,7 @@ function esc(text) {
 (async function init() {
   loadBlockedDomains();
   loadStarredCompanies();
+  loadProposalData();
   loadArchivedCompanies();
   loadFlaggedCompanies();
   loadMergedDomains();
