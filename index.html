@@ -305,7 +305,7 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
 .dp-body{display:flex;flex:1;overflow:hidden}
 
 /* Left: company info + relationships */
-.dp-left{width:340px;min-width:280px;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
+.dp-left{width:420px;min-width:320px;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
 .dp-left-head{padding:20px 20px 0;flex-shrink:0}
 .dp-company-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
 .dp-co-logo{width:44px;height:44px;border-radius:10px;display:grid;place-items:center;font-weight:700;font-size:16px;color:#fff;flex-shrink:0;overflow:hidden;position:relative}
@@ -5393,8 +5393,16 @@ function showCompanyPanel(id) {
   panelState = { view: 'company', companyId: id, selectedContact: null };
   const color = COLORS[c.id % COLORS.length];
   const contacts = c.allContacts || [];
-  const sorted = [...contacts].sort((a, b) => (b.sent + b.received) - (a.sent + a.received));
-  const primaryEmail = starredContacts[c.domain] || (sorted[0] ? sorted[0].email : '');
+  const starredEmail = starredContacts[c.domain] || '';
+  const sorted = [...contacts].sort((a, b) => {
+    // Starred contact always goes to top
+    if (starredEmail) {
+      if (a.email === starredEmail) return -1;
+      if (b.email === starredEmail) return 1;
+    }
+    return (b.sent + b.received) - (a.sent + a.received);
+  });
+  const primaryEmail = starredEmail || (sorted[0] ? sorted[0].email : '');
 
   const circumference = 2 * Math.PI * 12;
   const offset = circumference - (c.score / 100) * circumference;
