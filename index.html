@@ -1123,7 +1123,7 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
               <button class="btn btn-primary btn-sm" onclick="saveOpenAIKey()">Save</button>
               <button class="btn btn-ghost btn-sm" onclick="removeOpenAIKey()" style="color:var(--text2);padding:6px 8px" title="Remove key">&times;</button>
             </div>
-            <div style="font-size:11px;color:var(--text2);margin-top:8px;line-height:1.5">Your API key is stored locally in your browser and never sent to any server except OpenAI.</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:8px;line-height:1.5">Your API key is synced securely via OneDrive so it works across all your devices.</div>
           </div>
 
           <!-- AI capabilities summary -->
@@ -2385,6 +2385,7 @@ function gatherSyncPayload() {
     contact_names: contactNameOverrides,
     client_id: getClientId(),
     email_signature: getEmailSignature(),
+    openai_key: getOpenAIKey(),
   };
 
   // Collect domain data — COMPACT format for cloud.
@@ -2560,6 +2561,10 @@ function applyCloudSettings(data) {
   }
   if (s.email_signature && !getEmailSignature()) {
     saveEmailSignature(s.email_signature);
+  }
+  if (s.openai_key && !getOpenAIKey()) {
+    localStorage.setItem('kennion_openai_key', s.openai_key);
+    loadAISettings();
   }
 }
 
