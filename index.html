@@ -4224,19 +4224,14 @@ function toggleRowSelect(id, checked) {
 }
 
 function toggleSelectAll(checked) {
-  // Get currently visible/filtered companies
-  let data = [...companies];
-  if (currentFilter !== 'all') {
-    data = data.filter(c => c.status === currentFilter);
-  }
-  const q = (document.getElementById('searchInput').value || '').toLowerCase();
-  if (q) data = data.filter(c => c.name.toLowerCase().includes(q) || c.contact.toLowerCase().includes(q) || c.domain.toLowerCase().includes(q));
-
-  if (checked) {
-    data.forEach(c => selectedIds.add(c.id));
-  } else {
-    data.forEach(c => selectedIds.delete(c.id));
-  }
+  // Only select/deselect rows actually visible in the table right now
+  var rows = document.querySelectorAll('#tableBody tr[data-id]');
+  rows.forEach(function(row) {
+    var id = parseInt(row.getAttribute('data-id'), 10);
+    if (isNaN(id)) return;
+    if (checked) selectedIds.add(id);
+    else selectedIds.delete(id);
+  });
   renderTable();
 }
 
