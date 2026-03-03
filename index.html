@@ -6210,15 +6210,15 @@ function switchLeftTab(tab, el, domain, companyId) {
 async function fetchCompanyFiles(domain) {
   const el = document.getElementById('dpLeftFiles');
 
-  // Use cache if available
-  if (companyFilesCache[domain] && companyFilesCache[domain].length >= 0) {
+  // Use cache if already fetched (use _fetched flag to distinguish from empty results)
+  if (companyFilesCache[domain] && companyFilesCache[domain]._fetched) {
     renderCompanyFiles(domain);
     return;
   }
 
-  // Show loading only if files tab is visible
-  if (el && currentLeftTab === 'files') {
-    el.innerHTML = '<div class="dp-files-loading"><div class="scan-spinner"></div>Loading files from all emails...</div>';
+  // Show loading
+  if (el) {
+    el.innerHTML = '<div class="dp-files-loading"><div class="scan-spinner"></div>Loading files from emails...</div>';
   }
 
   try {
@@ -6226,32 +6226,46 @@ async function fetchCompanyFiles(domain) {
     const headers = graphHeaders(token);
     const allFiles = [];
 
-    // Get all contacts for this domain
-    const data = domainMap[domain];
-    if (!data || !data.contacts) {
+    // Collect all contact emails from primary domain + merged aliases
+    var contactEmails = [];
+    var data = domainMap[domain];
+    if (data && data.contacts) {
+      contactEmails = contactEmails.concat(Object.keys(data.contacts));
+    }
+    var aliases = getMergedAliases(domain);
+    for (var ai = 0; ai < aliases.length; ai++) {
+      var aliasData = domainMap[aliases[ai]];
+      if (aliasData && aliasData.contacts) {
+        contactEmails = contactEmails.concat(Object.keys(aliasData.contacts));
+      }
+    }
+    // Deduplicate emails
+    contactEmails = [...new Set(contactEmails.map(function(e) { return e.toLowerCase(); }))];
+
+    if (contactEmails.length === 0) {
       companyFilesCache[domain] = [];
+      companyFilesCache[domain]._fetched = true;
       renderCompanyFiles(domain);
       return;
     }
 
-    const contactEmails = Object.keys(data.contacts);
-
-    // Fetch attachments for all contacts in parallel for speed
+    // Fetch attachments for each contact
     const fetchContactFiles = async (email) => {
       const contactFiles = [];
       try {
-        // Search all emails (sent & received) with this contact that have attachments
+        // Use $search for participant — $filter and $search can't be combined on messages,
+        // so we search for the participant and check hasAttachments client-side
         const searchUrl = 'https://graph.microsoft.com/v1.0/me/messages?$top=200' +
           '&$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,hasAttachments' +
-          '&$filter=hasAttachments eq true' +
           '&$search=' + encodeURIComponent('"participants:' + email + '"');
         const resp = await fetch(searchUrl, { headers });
         if (!resp.ok) return contactFiles;
         const result = await resp.json();
         if (!result.value) return contactFiles;
 
-        // Fetch attachments for all messages in parallel (batches of 5)
+        // Filter to only messages with attachments
         const msgs = result.value.filter(m => m.hasAttachments);
+        // Fetch attachments in batches of 5
         for (let i = 0; i < msgs.length; i += 5) {
           const batch = msgs.slice(i, i + 5);
           const attResults = await Promise.allSettled(batch.map(msg =>
@@ -6305,6 +6319,7 @@ async function fetchCompanyFiles(domain) {
     }
     unique.sort((a, b) => b.date - a.date);
     companyFilesCache[domain] = unique;
+    companyFilesCache[domain]._fetched = true;
     renderCompanyFiles(domain);
   } catch(e) {
     if (el) el.innerHTML = '<div class="dp-files-empty">Could not load files: ' + esc(e.message) + '</div>';
