@@ -1001,6 +1001,10 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
             <h3>Protected Domains & Emails</h3>
             <span class="settings-badge" id="settingsBlockedCount">0</span>
           </div>
+          <div id="blockedSyncStatus" style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(52,168,83,.08);border:1px solid rgba(52,168,83,.15);border-radius:6px;margin-bottom:10px;font-size:11px;color:#34a853">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#34a853" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/><polyline points="15 13 12 16 9 13"/></svg>
+            <span id="blockedSyncText">Backed up to cloud</span>
+          </div>
           <p class="settings-desc">Domains and emails here will never appear in your CRM. Add multiple — one per line, or comma/space separated.</p>
           <div style="display:flex;gap:8px">
             <textarea id="settingsBlockDomainsInput" rows="3" placeholder="e.g. newsletter.com, noreply@company.com, spam.org" style="flex:1;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:inherit;outline:none;resize:vertical"></textarea>
@@ -2199,6 +2203,7 @@ async function saveToCloud() {
       console.log('Cloud saved in ' + elapsed + 's (' + sizeKB + ' KB, ' + Object.keys(domainMap).length + ' domains)');
       setSyncBadge('success', 'Saved (' + elapsed + 's)');
       lastCloudSaveTime = Date.now();
+      updateBlockedSyncStatus();
     } else {
       console.warn('Cloud save failed:', resp.status, await resp.text());
       setSyncBadge('error', 'Save failed');
@@ -3976,6 +3981,35 @@ function bulkBlockSelected() {
 function updateBlockedCount() {
   const badge = document.getElementById('blockedCount');
   if (badge) badge.textContent = blockedDomains.size;
+  const settingsBadge = document.getElementById('settingsBlockedCount');
+  if (settingsBadge) settingsBadge.textContent = blockedDomains.size;
+  updateBlockedSyncStatus();
+}
+
+function updateBlockedSyncStatus() {
+  const el = document.getElementById('blockedSyncText');
+  if (!el) return;
+  const statusEl = document.getElementById('blockedSyncStatus');
+  if (lastCloudSaveTime) {
+    const ago = Math.round((Date.now() - lastCloudSaveTime) / 1000);
+    let timeStr;
+    if (ago < 5) timeStr = 'just now';
+    else if (ago < 60) timeStr = ago + 's ago';
+    else if (ago < 3600) timeStr = Math.floor(ago / 60) + 'm ago';
+    else timeStr = Math.floor(ago / 3600) + 'h ago';
+    el.textContent = blockedDomains.size + ' domains backed up to cloud \u00b7 Last saved ' + timeStr;
+    statusEl.style.background = 'rgba(52,168,83,.08)';
+    statusEl.style.borderColor = 'rgba(52,168,83,.15)';
+    statusEl.style.color = '#34a853';
+  } else if (cloudSyncInProgress) {
+    el.textContent = 'Saving ' + blockedDomains.size + ' domains to cloud...';
+    statusEl.style.background = 'rgba(26,115,232,.08)';
+    statusEl.style.borderColor = 'rgba(26,115,232,.15)';
+    statusEl.style.color = '#5b9cf6';
+  } else {
+    el.textContent = blockedDomains.size + ' domains \u00b7 Syncing to cloud...';
+    statusEl.style.color = '#7a7a95';
+  }
 }
 
 function showBlockedView() {
@@ -6082,6 +6116,7 @@ function showSettingsView() {
   // Populate fields
   document.getElementById('settingsSignatureInput').value = getEmailSignature();
   renderBlockedDomainsList();
+  updateBlockedSyncStatus();
   // Show connected state or setup state
   if (currentAccount) {
     document.getElementById('settingsConnectedState').style.display = '';
