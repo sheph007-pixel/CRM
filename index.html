@@ -470,6 +470,19 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
 .compose-footer .btn-send{background:var(--accent);color:#fff;font-weight:600;padding:7px 20px;border-radius:8px;border:none;font-size:13px;cursor:pointer;font-family:inherit;transition:.15s}
 .compose-footer .btn-send:hover{background:#1557b0}
 .compose-footer .btn-send:disabled{opacity:.5;cursor:not-allowed}
+.compose-to-dropdown{position:absolute;top:100%;left:40px;right:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);max-height:220px;overflow-y:auto;z-index:400}
+.compose-to-item{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;transition:.1s}
+.compose-to-item:hover,.compose-to-item.focused{background:var(--surface2)}
+.compose-to-avatar{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+.compose-to-info{flex:1;min-width:0}
+.compose-to-name{font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.compose-to-detail{font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.compose-to-empty{padding:14px 16px;font-size:12px;color:var(--text2);text-align:center}
+.compose-ai-bar{display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,rgba(124,77,255,.05),rgba(26,115,232,.05))}
+.compose-ai-icon{color:var(--accent);display:grid;place-items:center;flex-shrink:0}
+.compose-ai-bar input{flex:1;background:none;border:none;outline:none;color:var(--text);font-size:13px;font-family:inherit;padding:4px 0}
+.compose-ai-bar input::placeholder{color:var(--text3)}
+.btn-ai-compose{padding:5px 12px!important;font-size:11px!important;border-radius:6px!important;white-space:nowrap}
 .btn-ai{background:linear-gradient(135deg,#7c4dff,#1a73e8);color:#fff;font-weight:600;padding:7px 14px;border-radius:8px;border:none;font-size:12px;cursor:pointer;font-family:inherit;transition:.15s;display:inline-flex;align-items:center;gap:5px}
 .btn-ai:hover{opacity:.9}
 .btn-ai:disabled{opacity:.5;cursor:not-allowed}
@@ -572,6 +585,8 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
 .inbox-tb-btn.danger:hover{background:var(--red-bg);color:var(--red);border-color:var(--red)}
 .inbox-tb-btn svg{width:14px;height:14px;flex-shrink:0}
 .inbox-tb-divider{width:1px;height:24px;background:var(--border)}
+.inbox-compose-btn{background:var(--accent)!important;color:#fff!important;border-color:var(--accent)!important;font-weight:600}
+.inbox-compose-btn:hover{background:#1557b0!important;border-color:#1557b0!important}
 .inbox-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);flex-shrink:0;padding:0 16px;background:var(--surface)}
 .inbox-tab{padding:9px 16px;font-size:12px;font-weight:500;color:var(--text2);cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;transition:.15s;font-family:inherit}
 .inbox-tab:hover{color:var(--text)}
@@ -893,6 +908,10 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
       <div class="inbox-toolbar">
         <h2>Inbox</h2>
         <span class="inbox-count-label" id="inboxTopCount"></span>
+        <button class="inbox-tb-btn inbox-compose-btn" onclick="openComposeNew()" title="Compose new email">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Compose
+        </button>
         <button class="inbox-tb-btn" onclick="inboxArchiveSelected()" id="inboxArchiveBtn" style="display:none" title="Archive selected">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
           Archive
@@ -1142,18 +1161,29 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
     <button class="cp-btn cp-close" onclick="composeClose()" title="Close"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><line x1="3" y1="3" x2="11" y2="11" stroke="currentColor" stroke-width="1.6"/><line x1="11" y1="3" x2="3" y2="11" stroke="currentColor" stroke-width="1.6"/></svg></button>
   </div>
   <div class="compose-fields">
-    <div class="compose-field"><label>To</label><input type="text" id="composeTo" readonly></div>
+    <div class="compose-field" style="position:relative">
+      <label>To</label>
+      <input type="text" id="composeTo" autocomplete="off" placeholder="Search contacts or type email..." oninput="composeToSearch(this.value)" onfocus="composeToSearch(this.value)" onblur="setTimeout(function(){document.getElementById('composeToDropdown').style.display='none'},180)">
+      <div class="compose-to-dropdown" id="composeToDropdown" style="display:none"></div>
+    </div>
     <div class="compose-field"><label>Subject</label><input type="text" id="composeSubject" placeholder="Subject"></div>
+  </div>
+  <!-- AI Prompt Bar -->
+  <div class="compose-ai-bar" id="composeAIBar">
+    <div class="compose-ai-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+    </div>
+    <input type="text" id="composeAIPrompt" placeholder="Tell AI what to write... e.g. &quot;Follow up on our pricing discussion&quot;" onkeydown="if(event.key==='Enter'){event.preventDefault();aiDraftEmail()}">
+    <button class="btn-ai btn-ai-compose" id="composeAIBtn" onclick="aiDraftEmail()" title="AI writes a draft based on your prompt">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      Draft
+    </button>
   </div>
   <div class="compose-body">
     <textarea id="composeBody" placeholder="Write your message..."></textarea>
   </div>
   <div class="compose-footer">
     <div style="display:flex;align-items:center;gap:8px">
-      <button class="btn-ai" id="composeAIBtn" onclick="aiDraftEmail()" title="AI writes a draft based on context">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-        AI Draft
-      </button>
       <span style="font-size:11px;color:var(--text2)" id="composeSendStatus"></span>
     </div>
     <button class="btn-send" id="composeSendBtn" onclick="sendComposedEmail()">Send</button>
@@ -5958,18 +5988,20 @@ let composeOriginalBodyHtml = '';
 function openCompose(toEmail, toName, subject, replyId, quotedBody, originalHtml) {
   composeReplyToId = replyId || null;
   composeOriginalBodyHtml = originalHtml || '';
-  document.getElementById('composeTo').value = toName ? toName + ' <' + toEmail + '>' : toEmail;
-  document.getElementById('composeTo').dataset.email = toEmail;
+  var toEl = document.getElementById('composeTo');
+  toEl.value = toName ? toName + ' <' + toEmail + '>' : toEmail;
+  toEl.dataset.email = toEmail;
+  toEl.readOnly = !!toEmail;
   document.getElementById('composeSubject').value = subject || '';
+  document.getElementById('composeAIPrompt').value = '';
+  document.getElementById('composeToDropdown').style.display = 'none';
 
   // Build body with signature
   var sig = getEmailSignature();
   var sigBlock = sig ? '\n\n' + sig : '';
   if (replyId) {
-    // Reply: cursor position → signature → quoted text
     document.getElementById('composeBody').value = sigBlock + (quotedBody || '');
   } else {
-    // New email: cursor position → signature
     document.getElementById('composeBody').value = sigBlock;
   }
 
@@ -5979,7 +6011,6 @@ function openCompose(toEmail, toName, subject, replyId, quotedBody, originalHtml
   composeSetState('normal');
   var popup = document.getElementById('composePopup');
   popup.classList.add('active');
-  // Place cursor at top of textarea so user types above signature/quoted text
   var bodyEl = document.getElementById('composeBody');
   setTimeout(function() {
     bodyEl.focus();
@@ -5989,6 +6020,81 @@ function openCompose(toEmail, toName, subject, replyId, quotedBody, originalHtml
       document.getElementById('composeSubject').focus();
     }
   }, 100);
+}
+
+// Open blank compose from Inbox toolbar
+function openComposeNew() {
+  composeReplyToId = null;
+  composeOriginalBodyHtml = '';
+  var toEl = document.getElementById('composeTo');
+  toEl.value = '';
+  toEl.dataset.email = '';
+  toEl.readOnly = false;
+  document.getElementById('composeSubject').value = '';
+  document.getElementById('composeAIPrompt').value = '';
+  document.getElementById('composeToDropdown').style.display = 'none';
+
+  var sig = getEmailSignature();
+  document.getElementById('composeBody').value = sig ? '\n\n' + sig : '';
+
+  document.getElementById('composeSendStatus').textContent = '';
+  document.getElementById('composeSendBtn').disabled = false;
+  document.getElementById('composeTitle').textContent = 'New Email';
+  composeSetState('normal');
+  document.getElementById('composePopup').classList.add('active');
+  setTimeout(function() { document.getElementById('composeTo').focus(); }, 100);
+}
+
+// Autocomplete search for To field
+var _composeToColors = ['#1a73e8','#34a853','#ea4335','#fbbc04','#673ab7','#e91e63','#00bcd4','#ff5722'];
+function composeToSearch(query) {
+  var dd = document.getElementById('composeToDropdown');
+  if (!query || query.length < 1) { dd.style.display = 'none'; return; }
+  var q = query.toLowerCase();
+  var results = [];
+  // Search all contacts across all domains
+  for (var domain in domainMap) {
+    var dm = domainMap[domain];
+    var comp = companies.find(function(c) { return c.domain === domain; });
+    var compName = comp ? comp.name : domain;
+    for (var email in dm.contacts) {
+      var ct = dm.contacts[email];
+      var name = ct.name || '';
+      if (name.toLowerCase().indexOf(q) > -1 || email.indexOf(q) > -1 || compName.toLowerCase().indexOf(q) > -1) {
+        results.push({ name: name, email: email, company: compName, domain: domain });
+      }
+    }
+  }
+  // Also allow raw email if it looks like one
+  if (q.indexOf('@') > -1 && results.length === 0) {
+    results.push({ name: '', email: query, company: '', domain: '' });
+  }
+  if (results.length === 0) {
+    dd.innerHTML = '<div class="compose-to-empty">No contacts found. Type a full email address.</div>';
+    dd.style.display = 'block';
+    return;
+  }
+  // Limit to 8 results
+  results = results.slice(0, 8);
+  var html = '';
+  results.forEach(function(r, i) {
+    var initials = r.name ? r.name.split(' ').map(function(w){return w[0]||'';}).join('').substring(0,2).toUpperCase() : r.email.substring(0,2).toUpperCase();
+    var color = _composeToColors[i % _composeToColors.length];
+    html += '<div class="compose-to-item" onmousedown="composeSelectTo(\'' + r.email.replace(/'/g,"\\'") + '\',\'' + r.name.replace(/'/g,"\\'") + '\')">';
+    html += '<div class="compose-to-avatar" style="background:' + color + '">' + initials + '</div>';
+    html += '<div class="compose-to-info"><div class="compose-to-name">' + (r.name || r.email) + '</div>';
+    html += '<div class="compose-to-detail">' + r.email + (r.company ? ' \u00b7 ' + r.company : '') + '</div></div></div>';
+  });
+  dd.innerHTML = html;
+  dd.style.display = 'block';
+}
+
+function composeSelectTo(email, name) {
+  var toEl = document.getElementById('composeTo');
+  toEl.value = name ? name + ' <' + email + '>' : email;
+  toEl.dataset.email = email;
+  document.getElementById('composeToDropdown').style.display = 'none';
+  document.getElementById('composeSubject').focus();
 }
 
 async function openReply(messageId, toEmail, subject) {
@@ -6063,7 +6169,15 @@ document.addEventListener('click', function(e) {
 });
 
 async function sendComposedEmail() {
-  var toEmail = document.getElementById('composeTo').dataset.email;
+  var toEl = document.getElementById('composeTo');
+  var toEmail = toEl.dataset.email;
+  // If user typed a raw email without using autocomplete, parse it
+  if (!toEmail) {
+    var raw = toEl.value.trim();
+    var angleMatch = raw.match(/<([^>]+)>/);
+    if (angleMatch) toEmail = angleMatch[1];
+    else if (raw.indexOf('@') > -1) toEmail = raw;
+  }
   var subject = document.getElementById('composeSubject').value.trim();
   var fullBody = document.getElementById('composeBody').value.trim();
   // Validate that the user typed actual content (not just signature/quote)
@@ -7490,6 +7604,13 @@ async function aiDraftEmail() {
     document.getElementById('composeSendStatus').style.color = 'var(--red)';
     return;
   }
+  var userPrompt = (document.getElementById('composeAIPrompt').value || '').trim();
+  if (!userPrompt) {
+    document.getElementById('composeSendStatus').textContent = 'Type what you want the email to be about in the AI prompt bar above';
+    document.getElementById('composeSendStatus').style.color = 'var(--red)';
+    document.getElementById('composeAIPrompt').focus();
+    return;
+  }
   var btn = document.getElementById('composeAIBtn');
   btn.disabled = true;
   btn.textContent = 'Drafting...';
@@ -7507,7 +7628,6 @@ async function aiDraftEmail() {
   var contactCtx = '';
   if (toEmail) {
     var lowerEmail = toEmail.toLowerCase();
-    // Find company
     for (var domain in domainMap) {
       var dm = domainMap[domain];
       if (dm.contacts[lowerEmail]) {
@@ -7522,7 +7642,6 @@ async function aiDraftEmail() {
           contactCtx += 'Sent: ' + comp.sent + ', Received: ' + comp.received + '\n';
           if (enr.industry) contactCtx += 'Industry: ' + enr.industry + '\n';
         }
-        // Recent email history with this contact
         if (contactTimelineCache[lowerEmail]) {
           contactCtx += 'Recent email history:\n';
           contactTimelineCache[lowerEmail].slice(0, 10).forEach(function(e) {
@@ -7543,13 +7662,19 @@ async function aiDraftEmail() {
   }
 
   var prompt = 'You are drafting an email on behalf of the user. Write ONLY the email body text — no subject line, no "Dear" unless appropriate, no signature (the system adds one automatically).\n\n';
-  prompt += 'Recipient: ' + (toName || toEmail) + '\n';
+  prompt += 'USER INSTRUCTIONS: ' + userPrompt + '\n\n';
+  prompt += 'Recipient: ' + (toName || toEmail || '(not yet specified)') + '\n';
   prompt += 'Subject: ' + (subject || '(none set)') + '\n';
   if (isReply) prompt += 'This is a REPLY. Write a professional reply based on the conversation thread below.\n';
   else prompt += 'This is a NEW email.\n';
   if (contactCtx) prompt += '\nCONTACT CONTEXT:\n' + contactCtx + '\n';
   if (quotedPart) prompt += '\nPREVIOUS CONVERSATION:\n' + quotedPart + '\n';
-  prompt += '\nWrite a concise, professional email. Match the tone of previous conversations if available. Keep it natural and human-sounding.';
+  prompt += '\nFollow the user\'s instructions above. Write a concise, professional email. Match the tone of previous conversations if available. Keep it natural and human-sounding.';
+
+  // Also generate subject if empty
+  if (!subject) {
+    prompt += '\n\nALSO: Since no subject is set, output one on the very first line in this exact format: SUBJECT: <your subject>\nThen output the email body starting on the next line.';
+  }
 
   try {
     var provider = getEffectiveProvider();
@@ -7557,17 +7682,27 @@ async function aiDraftEmail() {
     if (!provKey) provKey = apiKey;
     var reply = '';
     if (provider === 'anthropic') {
-      reply = await callAnthropicAPI(provKey, prompt, [{ role: 'user', content: 'Draft this email now.' }]);
+      reply = await callAnthropicAPI(provKey, prompt, [{ role: 'user', content: 'Draft this email now based on my instructions.' }]);
     } else {
-      reply = await callOpenAIAPI(provKey, prompt, [{ role: 'user', content: 'Draft this email now.' }]);
+      reply = await callOpenAIAPI(provKey, prompt, [{ role: 'user', content: 'Draft this email now based on my instructions.' }]);
     }
-    // Insert AI draft at cursor position (top of compose)
+    // Extract subject if AI generated one
+    var draftBody = reply.trim();
+    if (!subject && draftBody.toUpperCase().startsWith('SUBJECT:')) {
+      var nlIdx = draftBody.indexOf('\n');
+      if (nlIdx > -1) {
+        var aiSubject = draftBody.substring(8, nlIdx).trim();
+        document.getElementById('composeSubject').value = aiSubject;
+        draftBody = draftBody.substring(nlIdx + 1).trim();
+      }
+    }
+    // Insert AI draft
     var sig = getEmailSignature();
     var sigBlock = sig ? '\n\n' + sig : '';
     if (isReply) {
-      document.getElementById('composeBody').value = reply.trim() + sigBlock + quotedPart;
+      document.getElementById('composeBody').value = draftBody + sigBlock + quotedPart;
     } else {
-      document.getElementById('composeBody').value = reply.trim() + sigBlock;
+      document.getElementById('composeBody').value = draftBody + sigBlock;
     }
     status.textContent = 'AI draft inserted — review and edit before sending';
     status.style.color = 'var(--green)';
