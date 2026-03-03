@@ -1008,36 +1008,6 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
           <textarea id="settingsSignatureInput" rows="4" placeholder="e.g.&#10;Best regards,&#10;John Smith&#10;Kennion Group | (555) 123-4567" style="width:100%;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box" onchange="saveEmailSignature(this.value)"></textarea>
         </div>
 
-        <!-- CLOUD SYNC & BACKUP -->
-        <div class="settings-card">
-          <div class="settings-card-header">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/></svg>
-            <h3>Cloud Sync & Backup</h3>
-          </div>
-          <p class="settings-desc">Your data is automatically synced to OneDrive so it's available on any device. You can also manually backup/restore.</p>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-            <button class="btn btn-ghost btn-sm" onclick="manualCloudSave()" id="settingsCloudSaveBtn">Save to Cloud Now</button>
-            <button class="btn btn-ghost btn-sm" onclick="manualCloudRestore()">Restore from Cloud</button>
-            <button class="btn btn-ghost btn-sm" onclick="showCloudVersionHistory()">Recover Previous Version</button>
-          </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-            <button class="btn btn-ghost btn-sm" onclick="exportBackup()">Export Backup File</button>
-            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('settingsImportInput').click()">Import Backup File</button>
-            <input type="file" id="settingsImportInput" accept=".json" style="display:none" onchange="importBackup(event)">
-          </div>
-          <p class="help-text" id="settingsCloudSyncStatus" style="margin-top:8px"></p>
-          <div id="settingsCloudVersionList" style="display:none;margin-top:8px;max-height:250px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:var(--surface2)"></div>
-        </div>
-
-        <!-- DATA MANAGEMENT -->
-        <div class="settings-card">
-          <div class="settings-card-header">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-            <h3>Data Management</h3>
-          </div>
-          <p class="settings-desc">Clear all cached data and re-scan every email from scratch. Use this if data seems out of sync.</p>
-          <button class="btn btn-ghost" onclick="fullRescan()" style="color:var(--red);border-color:var(--red);font-size:13px;margin-top:8px">Reset & Full Re-scan</button>
-        </div>
       </div>
     </div>
 
@@ -1186,30 +1156,9 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
     </div>
 
     <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
-      <label style="font-size:12px;color:var(--text2);margin-bottom:6px;display:block">Cloud Sync</label>
-      <p class="help-text" style="margin-top:0;margin-bottom:8px">Your data (contacts, blocked domains, settings) is automatically synced to your OneDrive so it's available on any device. You can also manually backup/restore.</p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-ghost btn-sm" onclick="manualCloudSave()" id="cloudSaveBtn" style="font-size:12px">Save to Cloud Now</button>
-        <button class="btn btn-ghost btn-sm" onclick="manualCloudRestore()" style="font-size:12px">Restore from Cloud</button>
-        <button class="btn btn-ghost btn-sm" onclick="showCloudVersionHistory()" style="font-size:12px">Recover Previous Version</button>
-        <button class="btn btn-ghost btn-sm" onclick="exportBackup()" style="font-size:12px">Export Backup File</button>
-        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('importBackupInput').click()" style="font-size:12px">Import Backup File</button>
-        <input type="file" id="importBackupInput" accept=".json" style="display:none" onchange="importBackup(event)">
-      </div>
-      <p class="help-text" id="cloudSyncStatus" style="margin-top:6px"></p>
-      <div id="cloudVersionList" style="display:none;margin-top:8px;max-height:250px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:var(--surface2)"></div>
-    </div>
-
-    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
       <label style="font-size:12px;color:var(--text2);margin-bottom:6px;display:block">Email Signature</label>
       <p class="help-text" style="margin-top:0;margin-bottom:8px">This signature will be automatically appended to all outgoing emails (new messages and replies).</p>
       <textarea id="signatureInput" rows="4" placeholder="e.g.&#10;Best regards,&#10;John Smith&#10;Kennion Group | (555) 123-4567" style="width:100%;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box"></textarea>
-    </div>
-
-    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
-      <label style="font-size:12px;color:var(--text2);margin-bottom:6px;display:block">Data Management</label>
-      <button class="btn btn-ghost" onclick="fullRescan()" style="color:var(--red);border-color:var(--red);font-size:12px">Reset &amp; Full Re-scan</button>
-      <p class="help-text" style="margin-top:4px">Clears all cached data and re-scans every email from scratch.</p>
     </div>
 
     <div class="modal-actions">
