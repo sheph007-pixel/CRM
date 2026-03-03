@@ -2114,29 +2114,33 @@ function gatherSyncPayload() {
     email_signature: getEmailSignature(),
   };
 
-  // Collect IndexedDB domain data (already in memory)
+  // Collect domain data — COMPACT format for cloud.
+  // Store counts + dates only (NOT full message ID arrays).
+  // Full message IDs stay in local IndexedDB only (for dedup during scan).
+  // This keeps the cloud payload small and fast to upload.
   const domains = {};
   for (const [domain, data] of Object.entries(domainMap)) {
+    const contacts = {};
+    for (const [email, c] of Object.entries(data.contacts)) {
+      contacts[email] = {
+        name: c.name, email: c.email,
+        sent: c.sentIds ? c.sentIds.size : 0,
+        received: c.receivedIds ? c.receivedIds.size : 0,
+        lastDate: c.lastDate ? c.lastDate.toISOString() : null,
+      };
+    }
     domains[domain] = {
-      contacts: {},
-      sentIds: Array.from(data.sentIds || []),
-      receivedIds: Array.from(data.receivedIds || []),
+      contacts: contacts,
+      sent: data.sentIds ? data.sentIds.size : 0,
+      received: data.receivedIds ? data.receivedIds.size : 0,
       lastDate: data.lastDate ? data.lastDate.toISOString() : null,
       lastSentDate: data.lastSentDate ? data.lastSentDate.toISOString() : null,
       lastReceivedDate: data.lastReceivedDate ? data.lastReceivedDate.toISOString() : null,
     };
-    for (const [email, c] of Object.entries(data.contacts)) {
-      domains[domain].contacts[email] = {
-        name: c.name, email: c.email,
-        sentIds: Array.from(c.sentIds || []),
-        receivedIds: Array.from(c.receivedIds || []),
-        lastDate: c.lastDate ? c.lastDate.toISOString() : null,
-      };
-    }
   }
 
   return {
-    version: 2,
+    version: 3,
     syncedAt: new Date().toISOString(),
     userEmail: userEmail,
     settings: settings,
@@ -2144,7 +2148,7 @@ function gatherSyncPayload() {
     meta: {
       lastScanTime: lastScanTime ? lastScanTime.toISOString() : null,
       fullScanDone: fullScanDone,
-      seenMsgIds: Array.from(seenMsgIds),
+      // seenMsgIds omitted — too large for cloud, stays in local IndexedDB only
       deltaLink: deltaLink,
     }
   };
@@ -2163,10 +2167,12 @@ async function saveToCloud() {
     const payload = gatherSyncPayload();
     const body = JSON.stringify(payload);
     const sizeKB = Math.round(body.length / 1024);
+    // Timeout scales with payload size: 30s base + 1s per 100KB
+    const timeoutMs = Math.max(30000, 30000 + Math.round(sizeKB / 100) * 1000);
 
-    // 15-second timeout — saving should never take longer than this
+    console.log('Cloud save: uploading ' + sizeKB + ' KB (timeout: ' + (timeoutMs/1000) + 's)');
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     const resp = await fetch(
       'https://graph.microsoft.com/v1.0/me/drive/special/approot:/' + CLOUD_SYNC_FILE + ':/content',
@@ -2176,7 +2182,7 @@ async function saveToCloud() {
 
     const elapsed = ((Date.now() - saveStart) / 1000).toFixed(1);
     if (resp.ok) {
-      console.log('Cloud saved in ' + elapsed + 's (' + sizeKB + ' KB, ' + Object.keys(domainMap).length + ' domains, ' + blockedDomains.size + ' blocked)');
+      console.log('Cloud saved in ' + elapsed + 's (' + sizeKB + ' KB, ' + Object.keys(domainMap).length + ' domains)');
       setSyncBadge('success', 'Saved (' + elapsed + 's)');
       lastCloudSaveTime = Date.now();
     } else {
@@ -2185,8 +2191,13 @@ async function saveToCloud() {
     }
   } catch(e) {
     if (e.name === 'AbortError') {
-      console.warn('Cloud save timed out after 15s');
-      setSyncBadge('error', 'Save timeout');
+      const elapsed = ((Date.now() - saveStart) / 1000).toFixed(0);
+      console.warn('Cloud save timed out after ' + elapsed + 's');
+      setSyncBadge('error', 'Slow connection — retrying...');
+      // Retry once after timeout
+      cloudSyncInProgress = false;
+      setTimeout(() => saveToCloud(), 3000);
+      return;
     } else {
       console.warn('Cloud save error:', e);
       setSyncBadge('error', 'Save error');
@@ -2274,7 +2285,8 @@ function applyCloudSettings(data) {
 }
 
 function applyCloudDomainData(data) {
-  // Restore domain/contact data (merge with existing)
+  // Restore domain/contact data (merge with existing — only adds, never removes)
+  // Supports both v2 (full ID arrays) and v3 (compact: counts + dates only)
   if (data.domainData && Object.keys(data.domainData).length > 0) {
     for (const [domain, d] of Object.entries(data.domainData)) {
       const key = domain.toLowerCase();
@@ -2282,18 +2294,26 @@ function applyCloudDomainData(data) {
         domainMap[key] = { contacts: {}, sentIds: new Set(), receivedIds: new Set(), lastDate: null, lastSentDate: null, lastReceivedDate: null };
       }
       const entry = domainMap[key];
-      for (const id of (d.sentIds || [])) entry.sentIds.add(id);
-      for (const id of (d.receivedIds || [])) entry.receivedIds.add(id);
+      // v2 format: merge full ID arrays
+      if (d.sentIds && d.sentIds.length > 0) { for (const id of d.sentIds) entry.sentIds.add(id); }
+      if (d.receivedIds && d.receivedIds.length > 0) { for (const id of d.receivedIds) entry.receivedIds.add(id); }
+      // Merge dates (keep latest)
       if (d.lastDate) { const dt = new Date(d.lastDate); if (!entry.lastDate || dt > entry.lastDate) entry.lastDate = dt; }
       if (d.lastSentDate) { const sd = new Date(d.lastSentDate); if (!entry.lastSentDate || sd > entry.lastSentDate) entry.lastSentDate = sd; }
       if (d.lastReceivedDate) { const rd = new Date(d.lastReceivedDate); if (!entry.lastReceivedDate || rd > entry.lastReceivedDate) entry.lastReceivedDate = rd; }
+      // Merge contacts
       for (const [email, c] of Object.entries(d.contacts || {})) {
         const le = email.toLowerCase();
         if (!entry.contacts[le]) {
-          entry.contacts[le] = { name: c.name, email: le, sentIds: new Set(c.sentIds || []), receivedIds: new Set(c.receivedIds || []), lastDate: c.lastDate ? new Date(c.lastDate) : null };
+          entry.contacts[le] = {
+            name: c.name, email: le,
+            sentIds: new Set(c.sentIds || []),
+            receivedIds: new Set(c.receivedIds || []),
+            lastDate: c.lastDate ? new Date(c.lastDate) : null
+          };
         } else {
-          for (const id of (c.sentIds || [])) entry.contacts[le].sentIds.add(id);
-          for (const id of (c.receivedIds || [])) entry.contacts[le].receivedIds.add(id);
+          if (c.sentIds) { for (const id of c.sentIds) entry.contacts[le].sentIds.add(id); }
+          if (c.receivedIds) { for (const id of c.receivedIds) entry.contacts[le].receivedIds.add(id); }
           if (c.lastDate) { const cdt = new Date(c.lastDate); if (!entry.contacts[le].lastDate || cdt > entry.contacts[le].lastDate) entry.contacts[le].lastDate = cdt; }
         }
       }
@@ -2302,9 +2322,15 @@ function applyCloudDomainData(data) {
 
   // Restore meta
   if (data.meta) {
-    if (data.meta.lastScanTime) lastScanTime = new Date(data.meta.lastScanTime);
+    if (data.meta.lastScanTime) {
+      const cloudScanTime = new Date(data.meta.lastScanTime);
+      if (!lastScanTime || cloudScanTime > lastScanTime) lastScanTime = cloudScanTime;
+    }
     if (data.meta.fullScanDone) fullScanDone = data.meta.fullScanDone;
-    if (data.meta.seenMsgIds) seenMsgIds = new Set(data.meta.seenMsgIds);
+    // v2: seenMsgIds may exist in cloud; v3: omitted (local only)
+    if (data.meta.seenMsgIds && data.meta.seenMsgIds.length > 0) {
+      for (const id of data.meta.seenMsgIds) seenMsgIds.add(id);
+    }
     if (data.meta.deltaLink) deltaLink = data.meta.deltaLink;
   }
 }
