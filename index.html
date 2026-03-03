@@ -652,6 +652,7 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
 .inbox-act{background:none;border:none;width:26px;height:26px;border-radius:6px;display:grid;place-items:center;cursor:pointer;color:var(--text2);transition:.12s}
 .inbox-act:hover{background:var(--surface2);color:var(--text)}
 .inbox-act.act-delete:hover{color:var(--red)}
+.inbox-act.act-block:hover{color:var(--orange,#f59e0b)}
 .inbox-act.act-archive:hover{color:var(--green)}
 .inbox-badge-new{background:#e8453c;color:#fff;font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;display:inline-flex;align-items:center}
 .sidebar-item.inbox-item-nav{border:1px solid transparent;margin-bottom:4px}
@@ -947,6 +948,10 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
         <button class="inbox-tb-btn danger" onclick="inboxDeleteSelected()" id="inboxDeleteBtn" style="display:none" title="Delete selected">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
           Delete
+        </button>
+        <button class="inbox-tb-btn" onclick="inboxBlockSelected()" id="inboxBlockBtn" style="display:none" title="Block domain(s)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+          Block Domain
         </button>
         <span class="inbox-tb-divider"></span>
         <button class="inbox-tb-btn" onclick="refreshInbox()" title="Refresh">
@@ -7723,6 +7728,7 @@ function renderInbox() {
   const hasSelection = inboxSelectedIds.size > 0;
   document.getElementById('inboxArchiveBtn').style.display = hasSelection ? '' : 'none';
   document.getElementById('inboxDeleteBtn').style.display = hasSelection ? '' : 'none';
+  document.getElementById('inboxBlockBtn').style.display = hasSelection ? '' : 'none';
 
   if (!items.length) {
     list.innerHTML = `<div class="inbox-empty">
@@ -7786,6 +7792,9 @@ function renderInbox() {
             </button>
             <button class="inbox-act act-delete" onclick="event.stopPropagation();inboxDeleteOne('${eid}')" title="Delete">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+            </button>
+            <button class="inbox-act act-block" onclick="event.stopPropagation();inboxBlockDomain('${domainSafe}')" title="Block Domain">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
             </button>
             <button class="inbox-act" onclick="event.stopPropagation();openReply('${eid}','${item.fromEmail.replace(/'/g, "\\'")}','${esc(item.subject).replace(/'/g, "\\'")}')" title="Reply">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 00-4-4H4"/></svg>
@@ -7879,6 +7888,47 @@ async function inboxDeleteSelected() {
     renderInbox();
     updateInboxBadge();
   } catch(e) { console.error('Bulk delete failed:', e); }
+}
+
+function inboxBlockDomain(domain) {
+  if (!domain) return;
+  if (!confirm('Block "' + domain + '"? All emails and contacts from this domain will be removed from your CRM.')) return;
+  blockedDomains.add(domain.toLowerCase());
+  saveBlockedDomains();
+  inboxEmails = inboxEmails.filter(e => e.domain !== domain);
+  inboxSelectedIds.clear();
+  renderInbox();
+  updateInboxBadge();
+  buildCompaniesFromDomainMap();
+  renderTable();
+  updateStats();
+  updateBlockedCount();
+  renderBlockedDomainsList();
+}
+
+function inboxBlockSelected() {
+  const domains = new Set();
+  for (const id of inboxSelectedIds) {
+    const email = inboxEmails.find(e => e.id === id);
+    if (email && email.domain) domains.add(email.domain.toLowerCase());
+  }
+  if (!domains.size) return;
+  const domList = [...domains];
+  const msg = domList.length === 1
+    ? 'Block "' + domList[0] + '"? All emails and contacts from this domain will be removed from your CRM.'
+    : 'Block ' + domList.length + ' domains from your CRM?\n\n' + domList.join(', ');
+  if (!confirm(msg)) return;
+  for (const d of domList) blockedDomains.add(d);
+  saveBlockedDomains();
+  inboxEmails = inboxEmails.filter(e => !domains.has(e.domain));
+  inboxSelectedIds.clear();
+  renderInbox();
+  updateInboxBadge();
+  buildCompaniesFromDomainMap();
+  renderTable();
+  updateStats();
+  updateBlockedCount();
+  renderBlockedDomainsList();
 }
 
 function updateInboxBadge() {
