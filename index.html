@@ -2558,7 +2558,7 @@ function applyCloudSettings(data) {
   if (s.client_id) {
     localStorage.setItem('relateflow_client_id', s.client_id);
   }
-  if (s.email_signature) {
+  if (s.email_signature && !getEmailSignature()) {
     saveEmailSignature(s.email_signature);
   }
 }
@@ -7093,6 +7093,7 @@ async function fetchOutlookSignature() {
     var plainSig = htmlToPlainText(sigHtml).trim();
     if (!plainSig) return;
     saveEmailSignature(plainSig);
+    scheduleCloudSync();
     console.log('Outlook signature imported successfully');
     // Update settings textarea if visible
     var el = document.getElementById('settingsSignatureInput');
@@ -7178,6 +7179,7 @@ function hideSettingsView() {
   const sigEl = document.getElementById('settingsSignatureInput');
   if (sigEl && sigEl.value !== getEmailSignature()) {
     saveEmailSignature(sigEl.value);
+    scheduleCloudSync();
   }
 }
 
