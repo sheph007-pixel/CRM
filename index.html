@@ -191,6 +191,10 @@ th.col-check,td.col-check{width:40px;text-align:center;padding:10px 8px 10px 14p
 .row-star{background:none;border:none;cursor:pointer;font-size:16px;color:var(--border);padding:0 2px;transition:.15s;flex-shrink:0;line-height:1}
 .row-star:hover{color:#f5a623}
 .row-star.active{color:#f5a623}
+.row-flag{background:none;border:none;cursor:pointer;font-size:14px;color:var(--border);padding:0 2px;transition:.15s;flex-shrink:0;line-height:1;display:inline-flex;align-items:center}
+.row-flag:hover{color:#e8453c}
+.row-flag.active{color:#e8453c}
+.row-flag svg{width:14px;height:14px}
 .company-logo{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;font-weight:700;font-size:13px;color:#fff;flex-shrink:0;overflow:hidden;position:relative}
 .company-logo img{width:100%;height:100%;object-fit:contain;position:absolute;inset:0;background:#fff;padding:3px;border-radius:inherit}
 .company-info{display:flex;flex-direction:column}
@@ -351,6 +355,13 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
 .dp-star{background:none;border:none;cursor:pointer;font-size:15px;color:var(--border);padding:2px;transition:.15s;flex-shrink:0;line-height:1}
 .dp-star:hover{color:var(--orange);transform:scale(1.15)}
 .dp-star.active{color:var(--orange)}
+.dp-flag{background:none;border:none;cursor:pointer;color:var(--border);padding:2px;transition:.15s;flex-shrink:0;line-height:1;display:inline-flex;align-items:center}
+.dp-flag:hover{color:#e8453c;transform:scale(1.15)}
+.dp-flag.active{color:#e8453c}
+.dp-flag svg{width:16px;height:16px}
+.followup-date-input{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:12px;color:var(--text);font-family:inherit;cursor:pointer;outline:none;transition:border .15s}
+.followup-date-input:focus{border-color:var(--accent)}
+.followup-date-input::-webkit-calendar-picker-indicator{cursor:pointer;filter:invert(.5)}
 .dp-primary-badge{font-size:8px;padding:1px 5px;border-radius:8px;background:var(--accent);color:#fff;font-weight:700;flex-shrink:0}
 .dp-left-foot{padding:8px 20px;border-top:1px solid var(--border);flex-shrink:0}
 
@@ -746,6 +757,11 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
       Proposals
       <span class="sidebar-badge" id="proposalCount" style="background:#f5a623">0</span>
+    </div>
+    <div class="sidebar-item" id="followUpNavItem" onclick="showFollowUp()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+      Follow Up
+      <span class="sidebar-badge" id="followUpCount" style="background:#e8453c">0</span>
     </div>
     <div style="border-bottom:1px solid #2a2a3d;margin:4px 0"></div>
     <div class="sidebar-item active" data-group="segment" onclick="filterByStatus('all',this)" style="position:relative">
@@ -1491,6 +1507,8 @@ let blockedDomains = new Set();
 let starredCompanies = new Set();   // domains starred for Proposals
 let archivedCompanies = new Set();  // domains archived
 let flaggedCompanies = new Set();   // domains flagged as invalid/not working
+let followUpCompanies = new Set();  // domains marked for follow-up
+var followUpDates = {};             // { domain: "YYYY-MM-DD" }
 let mergedDomains = {};  // { "secondary-domain.com": "primary-domain.com" } — merged company aliases
 let selectedIds = new Set();
 let starredContacts = {};  // { "domain": "email@example.com" }
@@ -2062,6 +2080,28 @@ function saveProposalStages() {
 }
 
 // ──────────────────────────────────────────────
+// FOLLOW UP COMPANIES PERSISTENCE
+// ──────────────────────────────────────────────
+function loadFollowUpData() {
+  try {
+    var raw = localStorage.getItem('kennion_followup_companies');
+    followUpCompanies = raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch(e) { followUpCompanies = new Set(); }
+  try {
+    var raw2 = localStorage.getItem('kennion_followup_dates');
+    followUpDates = raw2 ? JSON.parse(raw2) : {};
+  } catch(e) { followUpDates = {}; }
+}
+function saveFollowUpCompanies() {
+  localStorage.setItem('kennion_followup_companies', JSON.stringify([...followUpCompanies]));
+  scheduleCloudSync();
+}
+function saveFollowUpDates() {
+  localStorage.setItem('kennion_followup_dates', JSON.stringify(followUpDates));
+  scheduleCloudSync();
+}
+
+// ──────────────────────────────────────────────
 // ARCHIVED COMPANIES PERSISTENCE
 // ──────────────────────────────────────────────
 function loadArchivedCompanies() {
@@ -2468,6 +2508,8 @@ function gatherSyncPayload() {
     email_throttle: getThrottleSettings(),
     proposal_notes: proposalNotes,
     proposal_stages: proposalStages,
+    followup_companies: [...followUpCompanies],
+    followup_dates: followUpDates,
   };
 
   // Collect domain data — COMPACT format for cloud.
@@ -2661,6 +2703,14 @@ function applyCloudSettings(data) {
   if (s.proposal_stages && Object.keys(s.proposal_stages).length > 0) {
     for (var k in s.proposal_stages) { if (!proposalStages[k]) proposalStages[k] = s.proposal_stages[k]; }
     saveProposalStages();
+  }
+  if (s.followup_companies && s.followup_companies.length > 0) {
+    for (const c of s.followup_companies) followUpCompanies.add(c);
+    saveFollowUpCompanies();
+  }
+  if (s.followup_dates && Object.keys(s.followup_dates).length > 0) {
+    for (var k in s.followup_dates) { if (!followUpDates[k]) followUpDates[k] = s.followup_dates[k]; }
+    saveFollowUpDates();
   }
 }
 
@@ -3878,12 +3928,14 @@ function buildCellHTML(col, c, color) {
     switch (col.id) {
       case 'company':
         var isStarred = starredCompanies.has(c.domain);
+        var isFollowUp = followUpCompanies.has(c.domain);
         var starDSafe = c.domain.replace(/'/g, "\\'");
         var mergeIndicator = (c.mergedAliases && c.mergedAliases.length > 0)
           ? '<span style="font-size:9px;font-weight:600;padding:1px 5px;border-radius:4px;background:rgba(147,52,230,.1);color:#9334e6;margin-left:4px" title="Merged with: ' + c.mergedAliases.join(', ') + '">+' + c.mergedAliases.length + '</span>'
           : '';
         return '<div class="company-cell">' +
           '<button class="row-star' + (isStarred ? ' active' : '') + '" onclick="event.stopPropagation();toggleCompanyStar(\'' + starDSafe + '\')" title="' + (isStarred ? 'Remove from Proposals' : 'Add to Proposals') + '">&#9733;</button>' +
+          '<button class="row-flag' + (isFollowUp ? ' active' : '') + '" onclick="event.stopPropagation();toggleFollowUp(\'' + starDSafe + '\')" title="' + (isFollowUp ? 'Remove from Follow Up' : 'Flag for Follow Up') + '"><svg viewBox="0 0 24 24" fill="' + (isFollowUp ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></button>' +
           '<div class="company-logo" style="background:' + color + '">' + companyLogoHTML(c.domain, color, c.name) + '</div><div class="company-info"><span class="company-name">' + esc(c.name) + mergeIndicator + '</span><span class="company-domain">' + esc(c.domain) + (c.mergedAliases && c.mergedAliases.length > 0 ? ', ' + c.mergedAliases.join(', ') : '') + '</span></div></div>';
       case 'contact':
         var initials = c.contact ? c.contact.split(' ').map(function(n){return n[0]}).join('').substring(0,2) : '';
@@ -4011,8 +4063,10 @@ function renderProposalsTable() {
 
     // Company
     var isStarred = starredCompanies.has(c.domain);
+    var isFollowUpP = followUpCompanies.has(c.domain);
     row += '<td><div class="company-cell">'
       + '<button class="row-star' + (isStarred ? ' active' : '') + '" onclick="event.stopPropagation();toggleCompanyStar(\'' + dSafe + '\')" title="Remove from Proposals">&#9733;</button>'
+      + '<button class="row-flag' + (isFollowUpP ? ' active' : '') + '" onclick="event.stopPropagation();toggleFollowUp(\'' + dSafe + '\')" title="' + (isFollowUpP ? 'Remove from Follow Up' : 'Flag for Follow Up') + '"><svg viewBox="0 0 24 24" fill="' + (isFollowUpP ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></button>'
       + '<div class="company-logo" style="background:' + color + '">' + companyLogoHTML(c.domain, color, c.name) + '</div>'
       + '<div class="company-info"><span class="company-name">' + esc(c.name) + '</span><span class="company-domain">' + esc(c.domain) + '</span></div>'
       + '</div></td>';
@@ -4067,10 +4121,11 @@ function _getSortVal(c, colKey) {
 }
 
 function renderTable() {
-  // If showing archived, flagged, or blocked view, use those renderers instead
+  // If showing archived, flagged, blocked, or follow-up view, use those renderers instead
   if (showingArchived) { showArchivedView(); return; }
   if (showingFlagged) { showFlaggedView(); return; }
   if (showingBlocked) { return; }
+  if (showingFollowUp) { renderFollowUpTable(); return; }
   if (showingProposals) { renderProposalsTable(); return; }
 
   // Restore stats section (hidden by proposals view)
@@ -4244,6 +4299,7 @@ function filterByType(type, el) {
   showingProposals = false;
   showingArchived = false;
   showingFlagged = false;
+  showingFollowUp = false;
   hideInbox(); hideSettingsView(); hideBlockedView();
   document.getElementById('crmContent').classList.add('active');
   document.getElementById('crmContent').style.display = '';
@@ -4277,6 +4333,7 @@ function filterByStatCard(type, el) {
   showingProposals = false;
   showingArchived = false;
   showingFlagged = false;
+  showingFollowUp = false;
   hideInbox(); hideSettingsView(); hideBlockedView();
   document.getElementById('crmContent').classList.add('active');
   document.getElementById('crmContent').style.display = '';
@@ -4602,6 +4659,7 @@ function filterByStatus(status, el) {
   showingProposals = false;
   showingArchived = false;
   showingFlagged = false;
+  showingFollowUp = false;
   hideInbox(); hideSettingsView(); hideBlockedView();
   document.getElementById('crmContent').classList.add('active');
   document.getElementById('crmContent').style.display = '';
@@ -4733,6 +4791,7 @@ function showBlockedView() {
   showingProposals = false;
   showingArchived = false;
   showingFlagged = false;
+  showingFollowUp = false;
   hideInbox(); hideSettingsView();
   showingBlocked = true;
   document.getElementById('crmContent').classList.remove('active');
@@ -4880,6 +4939,7 @@ function openFlaggedDetail(domain) {
   // Mark that we came from flagged view, then clear the flag so renderTable() won't re-trigger showFlaggedView
   _cameFromFlagged = true;
   showingFlagged = false;
+  showingFollowUp = false;
   showCompanyPanel(tempId);
 }
 
@@ -4887,6 +4947,7 @@ function showFlaggedView() {
   showingProposals = false;
   showingArchived = false;
   showingFlagged = true;
+  showingFollowUp = false;
   hideInbox(); hideSettingsView(); hideBlockedView();
   document.getElementById('crmContent').classList.add('active');
   document.getElementById('crmContent').style.display = '';
@@ -5544,6 +5605,7 @@ function showProposals() {
   showingProposals = true;
   showingArchived = false;
   showingFlagged = false;
+  showingFollowUp = false;
   currentFilter = 'all';
   currentTypeFilter = 'all';
   tableShowAll = false;
@@ -5566,6 +5628,158 @@ function updateProposalCount() {
   var count = 0;
   for (var d of starredCompanies) {
     if (!archivedCompanies.has(d) && !flaggedCompanies.has(d) && !blockedDomains.has(d)) count++;
+  }
+  el.textContent = count;
+}
+
+// ──────────────────────────────────────────────
+// FOLLOW UP
+// ──────────────────────────────────────────────
+let showingFollowUp = false;
+
+function toggleFollowUp(domain) {
+  if (followUpCompanies.has(domain)) {
+    followUpCompanies.delete(domain);
+    delete followUpDates[domain];
+    saveFollowUpDates();
+  } else {
+    followUpCompanies.add(domain);
+  }
+  saveFollowUpCompanies();
+  updateFollowUpCount();
+  renderTable();
+}
+
+function setFollowUpDate(domain, date) {
+  if (date) {
+    followUpDates[domain] = date;
+  } else {
+    delete followUpDates[domain];
+  }
+  saveFollowUpDates();
+  renderTable();
+}
+
+function showFollowUp() {
+  showingFollowUp = true;
+  showingProposals = false;
+  showingArchived = false;
+  showingFlagged = false;
+  currentFilter = 'all';
+  currentTypeFilter = 'all';
+  tableShowAll = false;
+  hideInbox(); hideSettingsView(); hideBlockedView();
+  document.getElementById('crmContent').classList.add('active');
+  document.getElementById('crmContent').style.display = '';
+  document.getElementById('detailPage').classList.remove('active');
+  document.querySelectorAll('.sidebar-item').forEach(e => e.classList.remove('active'));
+  document.getElementById('followUpNavItem').classList.add('active');
+  document.getElementById('statsSection').style.display = 'none';
+  setViewTitle('Follow Up', false);
+  clearSelection();
+  renderTable();
+}
+
+function renderFollowUpTable() {
+  var thead = document.getElementById('tableHead');
+  thead.innerHTML = '<tr>'
+    + '<th style="width:30px"><input type="checkbox" class="row-checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this.checked)"></th>'
+    + '<th onclick="sortTable(\'company\')" style="cursor:pointer">Company</th>'
+    + '<th onclick="sortTable(\'contact\')" style="cursor:pointer">Primary Contact</th>'
+    + '<th onclick="sortTable(\'lastActivity\')" style="cursor:pointer">Last Email</th>'
+    + '<th style="width:150px">Follow Up Date</th>'
+    + '</tr>';
+
+  var data = companies.filter(function(c) {
+    return followUpCompanies.has(c.domain) && !archivedCompanies.has(c.domain) && !blockedDomains.has(c.domain);
+  });
+
+  var q = (document.getElementById('searchInput').value || '').toLowerCase();
+  if (q) {
+    data = data.filter(function(c) {
+      return c.name.toLowerCase().includes(q) || c.contact.toLowerCase().includes(q) || c.domain.toLowerCase().includes(q);
+    });
+  }
+
+  // Sort: companies with follow-up dates first (earliest date first), then undated
+  var sortKey = currentSort.key || 'followUpDate';
+  data.sort(function(a, b) {
+    if (sortKey === 'company') {
+      var va = (a.name || '').toLowerCase(), vb = (b.name || '').toLowerCase();
+      return currentSort.asc ? va.localeCompare(vb) : vb.localeCompare(va);
+    }
+    if (sortKey === 'contact') {
+      var va = (a.contact || '').toLowerCase(), vb = (b.contact || '').toLowerCase();
+      return currentSort.asc ? va.localeCompare(vb) : vb.localeCompare(va);
+    }
+    if (sortKey === 'lastActivity') {
+      var va = a.lastDate ? a.lastDate.getTime() : 0, vb = b.lastDate ? b.lastDate.getTime() : 0;
+      return currentSort.asc ? va - vb : vb - va;
+    }
+    // Default: sort by follow-up date
+    var da = followUpDates[a.domain] || '', db = followUpDates[b.domain] || '';
+    if (da && !db) return -1;
+    if (!da && db) return 1;
+    if (da && db) return da.localeCompare(db);
+    return (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
+  });
+
+  var tbody = document.getElementById('tableBody');
+  if (data.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text2)">No follow-ups yet. Flag a company to add it here.</td></tr>';
+    updateViewTitleCount(0);
+    return;
+  }
+
+  var rows = [];
+  var today = new Date().toISOString().split('T')[0];
+  for (var i = 0; i < data.length; i++) {
+    var c = data[i];
+    var color = COLORS[c.id % COLORS.length];
+    var sel = selectedIds.has(c.id);
+    var dSafe = c.domain.replace(/'/g, "\\'");
+    var dateVal = followUpDates[c.domain] || '';
+    var isOverdue = dateVal && dateVal < today;
+    var isToday = dateVal && dateVal === today;
+
+    var row = '<tr' + (sel ? ' class="row-selected"' : '') + ' data-id="' + c.id + '">';
+    row += '<td class="col-check"><input type="checkbox" class="row-checkbox"' + (sel ? ' checked' : '') + ' data-rid="' + c.id + '"></td>';
+
+    // Company with flag
+    var isStarred = starredCompanies.has(c.domain);
+    row += '<td><div class="company-cell">'
+      + '<button class="row-star' + (isStarred ? ' active' : '') + '" onclick="event.stopPropagation();toggleCompanyStar(\'' + dSafe + '\')" title="' + (isStarred ? 'Remove from Proposals' : 'Add to Proposals') + '">&#9733;</button>'
+      + '<button class="row-flag active" onclick="event.stopPropagation();toggleFollowUp(\'' + dSafe + '\')" title="Remove from Follow Up"><svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></button>'
+      + '<div class="company-logo" style="background:' + color + '">' + companyLogoHTML(c.domain, color, c.name) + '</div>'
+      + '<div class="company-info"><span class="company-name">' + esc(c.name) + '</span><span class="company-domain">' + esc(c.domain) + '</span></div>'
+      + '</div></td>';
+
+    // Primary Contact
+    var initials = c.contact ? c.contact.split(' ').map(function(n){return n[0]}).join('').substring(0,2) : '';
+    var ctTitle = getContactTitle(c.contactEmail || '');
+    row += '<td><div class="contact-cell"><div class="avatar" style="background:' + color + '">' + contactPhotoHTML(c.contactEmail || '', color, initials) + '</div><div><span class="contact-name">' + esc(c.contact) + '</span>' + (ctTitle ? '<div class="contact-title">' + esc(ctTitle) + '</div>' : '') + '</div></div></td>';
+
+    // Last Email
+    row += '<td><span style="color:var(--text2)">' + esc(c.lastActivity) + '</span></td>';
+
+    // Follow Up Date
+    var dateStyle = isOverdue ? 'color:#e8453c;font-weight:600' : isToday ? 'color:#1e8e3e;font-weight:600' : '';
+    row += '<td><input type="date" class="followup-date-input" value="' + dateVal + '" style="' + dateStyle + '" onclick="event.stopPropagation()" onchange="event.stopPropagation();setFollowUpDate(\'' + dSafe + '\',this.value)"></td>';
+
+    row += '</tr>';
+    rows.push(row);
+  }
+
+  tbody.innerHTML = rows.join('');
+  updateViewTitleCount(data.length);
+}
+
+function updateFollowUpCount() {
+  var el = document.getElementById('followUpCount');
+  if (!el) return;
+  var count = 0;
+  for (var d of followUpCompanies) {
+    if (!archivedCompanies.has(d) && !blockedDomains.has(d)) count++;
   }
   el.textContent = count;
 }
@@ -5600,6 +5814,7 @@ function showArchivedView() {
   showingProposals = false;
   showingArchived = true;
   showingFlagged = false;
+  showingFollowUp = false;
   hideInbox(); hideSettingsView(); hideBlockedView();
   document.getElementById('crmContent').classList.add('active');
   document.getElementById('crmContent').style.display = '';
@@ -6148,7 +6363,8 @@ function showCompanyPanel(id) {
     '<div class="dp-co-logo" style="background:' + color + '">' + companyLogoHTML(c.domain, color, c.name, 48) + '</div>' +
     '<div class="dp-co-info"><div style="display:flex;align-items:center;gap:6px"><h2 class="editable-name" style="margin:0;cursor:text" contenteditable="false" id="dpCompanyName" onclick="this.contentEditable=\'true\';this.focus()" onblur="saveCompanyNameEdit(\'' + esc(c.domain).replace(/'/g,"\\'") + '\',this)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur()}">' + esc(c.name) + '</h2>' +
       '<svg class="edit-pencil-icon" onclick="var h=document.getElementById(\'dpCompanyName\');h.contentEditable=\'true\';h.focus()" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="cursor:pointer;color:var(--text3);flex-shrink:0"><path d="M17 3a2.83 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>' +
-      '<button class="dp-star' + (isStarredH ? ' active' : '') + '" onclick="event.stopPropagation();toggleCompanyStar(\'' + dSafeH + '\');showCompanyPanel(' + c.id + ')" title="' + (isStarredH ? 'Remove from Proposals' : 'Add to Proposals') + '" style="font-size:18px">&#9733;</button></div>' +
+      '<button class="dp-star' + (isStarredH ? ' active' : '') + '" onclick="event.stopPropagation();toggleCompanyStar(\'' + dSafeH + '\');showCompanyPanel(' + c.id + ')" title="' + (isStarredH ? 'Remove from Proposals' : 'Add to Proposals') + '" style="font-size:18px">&#9733;</button>' +
+      '<button class="dp-flag' + (followUpCompanies.has(c.domain) ? ' active' : '') + '" onclick="event.stopPropagation();toggleFollowUp(\'' + dSafeH + '\');showCompanyPanel(' + c.id + ')" title="' + (followUpCompanies.has(c.domain) ? 'Remove from Follow Up' : 'Flag for Follow Up') + '"><svg viewBox="0 0 24 24" fill="' + (followUpCompanies.has(c.domain) ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></button></div>' +
       '<div class="dp-domain">' +
         '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
           '<span style="font-size:12px">Website: <a href="https://' + esc(c.domain) + '" target="_blank" style="color:var(--accent)">' + esc(c.domain) + '</a></span>' +
@@ -7512,6 +7728,7 @@ function showSettingsView() {
   showingProposals = false;
   showingArchived = false;
   showingFlagged = false;
+  showingFollowUp = false;
   hideBlockedView();
   // Hide all other views
   document.getElementById('crmContent').classList.remove('active');
@@ -8038,6 +8255,7 @@ function showInbox() {
   showingProposals = false;
   showingArchived = false;
   showingFlagged = false;
+  showingFollowUp = false;
   hideSettingsView(); hideBlockedView();
   setViewTitle(null, false);
   document.getElementById('crmContent').classList.remove('active');
@@ -9048,10 +9266,12 @@ function esc(text) {
   loadBlockedDomains();
   loadStarredCompanies();
   loadProposalData();
+  loadFollowUpData();
   loadArchivedCompanies();
   loadFlaggedCompanies();
   loadMergedDomains();
   updateFlaggedCount(); // Show correct flagged count immediately on load
+  updateFollowUpCount(); // Show correct follow-up count immediately on load
   loadCompanyNameCache();
   loadContactNameOverrides();
   loadStarredContacts();
