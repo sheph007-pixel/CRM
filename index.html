@@ -1020,7 +1020,11 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
             <h3>Email Signature</h3>
           </div>
           <p class="settings-desc">Automatically appended to all outgoing emails (new messages and replies).</p>
-          <textarea id="settingsSignatureInput" rows="4" placeholder="e.g.&#10;Best regards,&#10;John Smith&#10;Kennion Group | (555) 123-4567" style="width:100%;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box" onchange="saveEmailSignature(this.value)"></textarea>
+          <textarea id="settingsSignatureInput" rows="4" placeholder="e.g.&#10;Best regards,&#10;John Smith&#10;Kennion Group | (555) 123-4567" style="width:100%;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-family:inherit;outline:none;resize:vertical;box-sizing:border-box"></textarea>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+            <button class="btn btn-primary btn-sm" id="saveSignatureBtn" onclick="saveSignatureFromSettings()">Save Signature</button>
+            <span id="signatureSaveStatus" style="font-size:12px;color:#34a853;opacity:0;transition:opacity .3s"></span>
+          </div>
         </div>
 
       </div>
@@ -6017,6 +6021,25 @@ function getEmailSignature() {
 
 function saveEmailSignature(sig) {
   localStorage.setItem('kennion_email_signature', sig);
+}
+
+function saveSignatureFromSettings() {
+  var val = document.getElementById('settingsSignatureInput').value;
+  saveEmailSignature(val);
+  scheduleSave();
+  var status = document.getElementById('signatureSaveStatus');
+  var btn = document.getElementById('saveSignatureBtn');
+  status.textContent = '\u2713 Signature saved';
+  status.style.opacity = '1';
+  btn.textContent = 'Saved!';
+  btn.style.background = '#34a853';
+  btn.style.borderColor = '#34a853';
+  setTimeout(function() {
+    status.style.opacity = '0';
+    btn.textContent = 'Save Signature';
+    btn.style.background = '';
+    btn.style.borderColor = '';
+  }, 2500);
 }
 
 async function fetchOutlookSignature() {
