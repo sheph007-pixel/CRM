@@ -2967,8 +2967,12 @@ async function fetchEmailsProgressively(token, useDelta) {
 }
 
 function timeAgo(date) {
+  if (!date) return '—';
+  const ts = (date instanceof Date) ? date.getTime() : new Date(date).getTime();
+  if (isNaN(ts)) return '—';
   const now = Date.now();
-  const diff = now - date.getTime();
+  const diff = now - ts;
+  if (diff < 0) return 'just now';
   const mins = Math.floor(diff / 60000);
   if (mins < 60) return mins + 'm ago';
   const hrs = Math.floor(mins / 60);
@@ -2976,9 +2980,13 @@ function timeAgo(date) {
   const days = Math.floor(hrs / 24);
   if (days < 7) return days + 'd ago';
   const weeks = Math.floor(days / 7);
-  if (weeks < 4) return weeks + 'w ago';
-  const months = Math.floor(days / 30);
-  return months + 'mo ago';
+  if (weeks < 5) return weeks + 'w ago';
+  const months = Math.floor(days / 30.44);
+  if (months < 12) return months + 'mo ago';
+  const years = Math.floor(months / 12);
+  const remMonths = months % 12;
+  if (remMonths === 0) return years + 'y ago';
+  return years + 'y ' + remMonths + 'mo ago';
 }
 
 // ──────────────────────────────────────────────
@@ -5582,6 +5590,30 @@ async function fetchContactTimeline(email, domain) {
     for (const item of items) { if (!seen.has(item.id)) { seen.add(item.id); unique.push(item); } }
     unique.sort((a, b) => b.date - a.date);
     contactTimelineCache[email] = unique;
+
+    // Fix contact lastDate from real email data (most recent email date)
+    if (unique.length > 0 && domain && domainMap[domain]) {
+      const realLastDate = unique[0].date;
+      const ct = domainMap[domain].contacts[email.toLowerCase()];
+      if (ct && realLastDate) {
+        ct.lastDate = realLastDate;
+        // Update the "Last" stat in the header if it's currently displayed
+        const statsRow = document.querySelector('#dpRightHead .dp-ct-stats-row');
+        if (statsRow) {
+          const statDivs = statsRow.querySelectorAll('.dp-ct-stat');
+          if (statDivs.length >= 3) {
+            statDivs[2].innerHTML = '<b>' + timeAgo(realLastDate) + '</b>Last';
+          }
+        }
+      }
+      // Also fix domain-level lastDate
+      let maxDate = null;
+      for (const c of Object.values(domainMap[domain].contacts)) {
+        if (c.lastDate && (!maxDate || c.lastDate > maxDate)) maxDate = c.lastDate;
+      }
+      if (maxDate) domainMap[domain].lastDate = maxDate;
+    }
+
     renderTimeline(email);
   } catch(e) {
     console.error('Timeline fetch error:', e);
