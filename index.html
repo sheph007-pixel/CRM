@@ -7777,13 +7777,16 @@ function showSettingsView() {
 }
 
 function hideSettingsView() {
+  var wasActive = document.getElementById('settingsView').classList.contains('active');
   document.getElementById('settingsView').classList.remove('active');
   document.getElementById('settingsNavItem').classList.remove('active');
-  // Auto-save signature when leaving
-  const sigEl = document.getElementById('settingsSignatureInput');
-  if (sigEl && sigEl.value !== getEmailSignature()) {
-    saveEmailSignature(sigEl.value);
-    scheduleCloudSync();
+  // Only auto-save signature if settings view was actually open (textarea was populated)
+  if (wasActive) {
+    const sigEl = document.getElementById('settingsSignatureInput');
+    if (sigEl && sigEl.value !== getEmailSignature()) {
+      saveEmailSignature(sigEl.value);
+      scheduleCloudSync();
+    }
   }
 }
 
