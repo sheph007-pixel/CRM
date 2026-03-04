@@ -1005,6 +1005,12 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
         </div>
       </div>
 
+      <!-- TABLE LOADING INDICATOR -->
+      <div id="tableLoadingOverlay" style="display:none;text-align:center;padding:60px 20px;color:var(--text2)">
+        <div style="display:inline-block;width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite;margin-bottom:16px"></div>
+        <div style="font-size:15px;font-weight:500" id="tableLoadingMsg">Loading your data...</div>
+      </div>
+
       <!-- TABLE -->
       <div class="table-wrap">
         <table>
@@ -2583,11 +2589,10 @@ async function loadFromSupabase() {
     console.log('Supabase: loading data...');
     const loadStart = Date.now();
 
-    // Run all 4 queries in parallel — companies and contacts use pagination
-    // to overcome Supabase's default 1000-row limit
-    const [companyData, contactData, settingsResult, scanResult] = await Promise.all([
+    // Load companies, settings, and scan metadata first (fast render)
+    // Contacts are loaded in a second pass to reduce initial wait time
+    const [companyData, settingsResult, scanResult] = await Promise.all([
       supabaseFetchAll('companies', '*', { user_id: supabaseUserId }),
-      supabaseFetchAll('contacts', '*', { user_id: supabaseUserId }),
       supabaseClient.from('user_settings').select('key, value').eq('user_id', supabaseUserId),
       supabaseClient.from('scan_metadata').select('*').eq('user_id', supabaseUserId).order('updated_at', { ascending: false }).limit(1).maybeSingle()
     ]);
@@ -2641,26 +2646,9 @@ async function loadFromSupabase() {
       if (c.custom_data && Object.keys(c.custom_data).length > 0) customColumnData[c.domain] = c.custom_data;
     }
 
-    // Add contacts to their companies
-    if (contactData) {
-      for (const ct of contactData) {
-        const domain = companyIdToDomain[ct.company_id];
-        if (!domain || !newDomainMap[domain]) continue;
-        newDomainMap[domain].contacts[ct.email] = {
-          name: ct.name || ct.email,
-          email: ct.email,
-          sentIds: new Set(),
-          receivedIds: new Set(),
-          lastDate: ct.last_activity_date ? new Date(ct.last_activity_date) : null,
-          _dbSentCount: ct.sent_count || 0,
-          _dbReceivedCount: ct.received_count || 0,
-        };
-        if (ct.is_starred) starredContacts[domain] = ct.email;
-        if (ct.enrichment && Object.keys(ct.enrichment).length > 0) {
-          contactEnrichment[ct.email] = ct.enrichment;
-        }
-      }
-    }
+    // Contacts are loaded after initial render for faster startup
+    // Store companyIdToDomain for deferred contact loading
+    const _companyIdToDomain = companyIdToDomain;
 
     // Apply settings (settingsData already destructured above)
     if (settingsData) {
@@ -2706,8 +2694,34 @@ async function loadFromSupabase() {
     }
 
     const elapsed = ((Date.now() - loadStart) / 1000).toFixed(1);
-    console.log('Supabase: loaded ' + companyData.length + ' companies, ' + (contactData ? contactData.length : 0) + ' contacts in ' + elapsed + 's');
-    return { domainMap: newDomainMap, scanMeta: scanMeta };
+    console.log('Supabase: loaded ' + companyData.length + ' companies in ' + elapsed + 's (contacts deferred)');
+
+    // Deferred contact loader — call after initial render for faster startup
+    const loadContacts = async function() {
+      const contactData = await supabaseFetchAll('contacts', '*', { user_id: supabaseUserId });
+      if (contactData) {
+        for (const ct of contactData) {
+          const domain = _companyIdToDomain[ct.company_id];
+          if (!domain || !newDomainMap[domain]) continue;
+          newDomainMap[domain].contacts[ct.email] = {
+            name: ct.name || ct.email,
+            email: ct.email,
+            sentIds: new Set(),
+            receivedIds: new Set(),
+            lastDate: ct.last_activity_date ? new Date(ct.last_activity_date) : null,
+            _dbSentCount: ct.sent_count || 0,
+            _dbReceivedCount: ct.received_count || 0,
+          };
+          if (ct.is_starred) starredContacts[domain] = ct.email;
+          if (ct.enrichment && Object.keys(ct.enrichment).length > 0) {
+            contactEnrichment[ct.email] = ct.enrichment;
+          }
+        }
+        console.log('Supabase: loaded ' + contactData.length + ' contacts (deferred)');
+      }
+    };
+
+    return { domainMap: newDomainMap, scanMeta: scanMeta, loadContacts: loadContacts };
   } catch(e) {
     console.warn('Supabase: load error:', e);
     return null;
@@ -3713,16 +3727,16 @@ async function fetchEmailsProgressively(token, useDelta) {
         processEmailBatch(regular);
       }
 
-      // Throttle UI: only rebuild table every 5 pages (heavy DOM work)
-      if (page === 1 || page % 5 === 0) {
+      // Throttle UI: only rebuild table every 15 pages to reduce DOM work
+      if (page === 1 || page % 15 === 0) {
         buildCompaniesFromDomainMap();
         renderTable();
         updateStats();
       }
       updateScanBanner('Scanning... ' + totalFetched.toLocaleString() + ' emails' + (totalRemoved > 0 ? ', ' + totalRemoved + ' removed' : '') + ' — ' + companies.length + ' companies');
 
-      // Persist every 5 pages
-      if (page === 1 || page % 5 === 0) {
+      // Persist every 10 pages (reduced from 5 to lower DB write frequency)
+      if (page === 1 || page % 10 === 0) {
         lastScanTime = new Date();
         persistData();
       }
@@ -3971,6 +3985,10 @@ async function onSignedIn() {
   let hasData = false;
   let cloudOnlyRestore = false;
 
+  // Show loading indicator while data loads
+  var loadingOverlay = document.getElementById('tableLoadingOverlay');
+  if (loadingOverlay) { loadingOverlay.style.display = ''; document.querySelector('.table-wrap').style.display = 'none'; }
+
   // ── SUPABASE: Initialize and register user (network) ──
   if (initSupabase()) {
     const msId = currentAccount.homeAccountId || currentAccount.localAccountId || currentAccount.username;
@@ -3980,6 +3998,7 @@ async function onSignedIn() {
   // Step 1: Load ALL data from Supabase (sole source of truth)
   if (supabaseReady && supabaseUserId) {
     try {
+      if (loadingOverlay) document.getElementById('tableLoadingMsg').textContent = 'Loading companies & contacts...';
       const sbData = await loadFromSupabase();
       if (sbData && sbData.domainMap && Object.keys(sbData.domainMap).length > 0) {
         domainMap = sbData.domainMap;
@@ -4002,6 +4021,15 @@ async function onSignedIn() {
         renderTable();
         updateStats();
         updateLastSyncDisplay();
+        // Hide loading overlay, show table
+        if (loadingOverlay) { loadingOverlay.style.display = 'none'; document.querySelector('.table-wrap').style.display = ''; }
+        // Load contacts in background after table is visible
+        if (sbData.loadContacts) {
+          sbData.loadContacts().then(() => {
+            buildCompaniesFromDomainMap();
+            renderTable();
+          });
+        }
         resolveCompanyNames();
         runEnrichment();
         // Data persisted to Supabase via syncToSupabase
@@ -4011,6 +4039,12 @@ async function onSignedIn() {
     } catch(e) {
       console.warn('Startup: Supabase load failed:', e);
     }
+  }
+
+  // Ensure loading overlay is hidden even if no data was loaded
+  if (loadingOverlay && loadingOverlay.style.display !== 'none') {
+    loadingOverlay.style.display = 'none';
+    document.querySelector('.table-wrap').style.display = '';
   }
 
   // No local fallback — Supabase is the sole source of truth.
