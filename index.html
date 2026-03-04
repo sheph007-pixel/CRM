@@ -2862,6 +2862,20 @@ function applyCompanyChange(row) {
   if (row.merged_into !== undefined) { if (row.merged_into) mergedDomains[d] = row.merged_into; else delete mergedDomains[d]; }
   if (row.enrichment && Object.keys(row.enrichment).length > 0) enrichmentCache[d] = row.enrichment;
   if (row.custom_data && Object.keys(row.custom_data).length > 0) customColumnData[d] = row.custom_data;
+  // Update DB-cached counts so they survive periodic refreshes
+  if (domainMap[d]) {
+    if (row.sent_count !== undefined) domainMap[d]._dbSentCount = row.sent_count || 0;
+    if (row.received_count !== undefined) domainMap[d]._dbReceivedCount = row.received_count || 0;
+    // Also update contact-level DB counts if contacts table was fetched
+    if (row.contacts && domainMap[d].contacts) {
+      for (var ce in row.contacts) {
+        if (domainMap[d].contacts[ce]) {
+          domainMap[d].contacts[ce]._dbSentCount = row.contacts[ce].sent_count || 0;
+          domainMap[d].contacts[ce]._dbReceivedCount = row.contacts[ce].received_count || 0;
+        }
+      }
+    }
+  }
 }
 
 // cacheMetadataToLocalStorage removed — Supabase is sole source of truth
@@ -3343,11 +3357,13 @@ function buildCompaniesFromDomainMap() {
         var ct = srcData.contacts[ce];
         var le = ce.toLowerCase();
         if (!mergedContacts[le]) {
-          mergedContacts[le] = { name: ct.name, email: ct.email, sentIds: new Set(ct.sentIds), receivedIds: new Set(ct.receivedIds), lastDate: ct.lastDate };
+          mergedContacts[le] = { name: ct.name, email: ct.email, sentIds: new Set(ct.sentIds), receivedIds: new Set(ct.receivedIds), lastDate: ct.lastDate, _dbSentCount: ct._dbSentCount || 0, _dbReceivedCount: ct._dbReceivedCount || 0 };
         } else {
           for (var cid of ct.sentIds) mergedContacts[le].sentIds.add(cid);
           for (var cid2 of ct.receivedIds) mergedContacts[le].receivedIds.add(cid2);
           if (ct.lastDate && (!mergedContacts[le].lastDate || ct.lastDate > mergedContacts[le].lastDate)) mergedContacts[le].lastDate = ct.lastDate;
+          mergedContacts[le]._dbSentCount = Math.max(mergedContacts[le]._dbSentCount || 0, ct._dbSentCount || 0);
+          mergedContacts[le]._dbReceivedCount = Math.max(mergedContacts[le]._dbReceivedCount || 0, ct._dbReceivedCount || 0);
         }
       }
     }
@@ -3362,9 +3378,14 @@ function buildCompaniesFromDomainMap() {
     }
 
     // Unique email counts (Set-based, for scoring — CC'd emails count once)
-    // Fall back to DB-stored counts when Sets are empty (loaded from Supabase)
-    const uniqueSent = mergedSentIds.size || (data._dbSentCount || 0);
-    const uniqueReceived = mergedReceivedIds.size || (data._dbReceivedCount || 0);
+    // Fall back to DB-stored counts when Sets are empty (sum across all merged aliases)
+    var mergedDbSentCount = 0, mergedDbReceivedCount = 0;
+    for (var di = 0; di < domainSources.length; di++) {
+      mergedDbSentCount += (domainSources[di].data._dbSentCount || 0);
+      mergedDbReceivedCount += (domainSources[di].data._dbReceivedCount || 0);
+    }
+    const uniqueSent = mergedSentIds.size || mergedDbSentCount;
+    const uniqueReceived = mergedReceivedIds.size || mergedDbReceivedCount;
 
     // Display counts = sum of contacts (matches what user sees in contact cards)
     const domainSent = contactArr.reduce(function(s, ct) { return s + ct.sent; }, 0);
