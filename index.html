@@ -2606,9 +2606,14 @@ let supabaseReady = false;
 let supabaseSyncTimer = null;
 let supabaseSyncInProgress = false;
 
+// Supabase config — hardcoded (anon key is safe to expose, like Firebase config)
+const SUPABASE_URL = 'https://hkfdapvulzpnrwcgxyrx.supabase.co';
+const SUPABASE_ANON_KEY = ''; // Paste your anon key here
+
 function getSupabaseConfig() {
-  const url = localStorage.getItem('kennion_supabase_url') || '';
-  const key = localStorage.getItem('kennion_supabase_key') || '';
+  // Hardcoded values take priority, fall back to localStorage for overrides
+  const url = SUPABASE_URL || localStorage.getItem('kennion_supabase_url') || '';
+  const key = SUPABASE_ANON_KEY || localStorage.getItem('kennion_supabase_key') || '';
   return { url, key };
 }
 
