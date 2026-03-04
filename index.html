@@ -862,9 +862,9 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
         <span class="sa-email" id="accountEmail"></span>
       </div>
-      <!-- Cloud Backup Status -->
+      <!-- Database Sync Status -->
       <div class="sa-status-row">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/></svg>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
         <span class="sync-badge" id="syncBadge">
           <span class="sync-dot"></span>
           <span id="syncBadgeText">Connected</span>
@@ -1194,8 +1194,8 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
             <span class="settings-badge" id="settingsBlockedCount">0</span>
           </div>
           <div id="blockedSyncStatus" style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(52,168,83,.08);border:1px solid rgba(52,168,83,.15);border-radius:6px;margin-bottom:10px;font-size:11px;color:#34a853">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#34a853" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/><polyline points="15 13 12 16 9 13"/></svg>
-            <span id="blockedSyncText">Backed up to Supabase</span>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#34a853" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            <span id="blockedSyncText">Synced to database</span>
           </div>
           <p class="settings-desc">Domains and emails here will never appear in your CRM. Add multiple — one per line, or comma/space separated.</p>
           <div style="display:flex;gap:8px">
@@ -1307,26 +1307,17 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
           <div style="font-size:11px;color:var(--text2);margin-top:8px;line-height:1.5">Limits reset on a rolling window. Leave blank to disable throttling.</div>
         </div>
 
-        <!-- BACKUP & EXPORT -->
+        <!-- DATA STATUS -->
         <div class="settings-card">
           <div class="settings-card-header">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            <h3>Backup & Export</h3>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <h3>Data & Security</h3>
           </div>
-          <p class="settings-desc">Your data is automatically saved to the Supabase database with daily backups. Use these tools for manual JSON exports.</p>
-          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
-            <button class="btn btn-ghost btn-sm" onclick="exportBackup()" style="font-size:11px">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              Export Backup
-            </button>
-            <label class="btn btn-ghost btn-sm" style="font-size:11px;cursor:pointer">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              Import Backup
-              <input type="file" accept=".json" onchange="importBackup(event)" style="display:none">
-            </label>
+          <p class="settings-desc">All data is automatically saved to Supabase (PostgreSQL) in real time. Daily backups are enabled. Your data is always current regardless of browser or device.</p>
+          <div id="supabaseStatusCard" style="margin-top:10px;padding:8px 12px;background:rgba(52,168,83,.08);border:1px solid rgba(52,168,83,.15);border-radius:6px;font-size:12px;color:#34a853;display:flex;align-items:center;gap:6px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#34a853" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            Connected — real-time sync active
           </div>
-          <div id="settingsCloudSyncStatus" style="margin-top:10px;font-size:12px;color:var(--text2);min-height:18px"></div>
-          <div id="settingsCloudVersionList" style="display:none;margin-top:10px;max-height:300px;overflow-y:auto"></div>
         </div>
 
       </div>
@@ -1692,7 +1683,6 @@ function loadColumnConfig() {
 
 function saveColumnConfig() {
   localStorage.setItem('kennion_columns', JSON.stringify(columnConfig));
-  scheduleCloudSync();
   supabaseSaveSetting('column_config', columnConfig);
 }
 
@@ -1705,8 +1695,7 @@ function loadCustomColumnData() {
 
 function saveCustomColumnData() {
   localStorage.setItem('kennion_custom_data', JSON.stringify(customColumnData));
-  scheduleCloudSync();
-  scheduleSupabaseSync();
+  supabaseSaveSetting('custom_column_data', customColumnData);
 }
 
 function loadEnrichmentCache() {
@@ -1718,6 +1707,7 @@ function loadEnrichmentCache() {
 
 function saveEnrichmentCache() {
   localStorage.setItem('kennion_enrichment', JSON.stringify(enrichmentCache));
+  supabaseSaveSetting('enrichment_cache', enrichmentCache);
 }
 
 function getVisibleColumns() {
@@ -1868,6 +1858,7 @@ function loadContactEnrichment() {
 
 function saveContactEnrichment() {
   localStorage.setItem('kennion_contact_enrich', JSON.stringify(contactEnrichment));
+  supabaseSaveSetting('contact_enrichment', contactEnrichment);
 }
 
 // Company logo: Google Favicon API (reliable, free) with Clearbit fallback
@@ -2089,8 +2080,7 @@ function loadStarredContacts() {
 
 function saveStarredContacts() {
   localStorage.setItem('relateflow_starred_contacts', JSON.stringify(starredContacts));
-  scheduleCloudSync();
-  scheduleSupabaseSync();
+  supabaseSaveSetting('starred_contacts', starredContacts);
 }
 
 function loadCompanyTypes() {
@@ -2102,7 +2092,6 @@ function loadCompanyTypes() {
 
 function saveCompanyTypes() {
   localStorage.setItem('kennion_company_types', JSON.stringify(companyTypes));
-  scheduleCloudSync();
   // Instant Supabase save for each changed type
   for (const [domain, type] of Object.entries(companyTypes)) {
     supabaseSaveCompanyField(domain, 'company_type', type ? type.toLowerCase() : null);
@@ -2158,7 +2147,6 @@ function loadBlockedDomains() {
 
 function saveBlockedDomains() {
   localStorage.setItem('relateflow_blocked_domains', JSON.stringify([...blockedDomains]));
-  scheduleCloudSync();
   supabaseSaveSetting('blocked_domains', [...blockedDomains]);
 }
 
@@ -2177,8 +2165,7 @@ function loadStarredCompanies() {
 }
 function saveStarredCompanies() {
   localStorage.setItem('kennion_starred_companies', JSON.stringify([...starredCompanies]));
-  scheduleCloudSync();
-  scheduleSupabaseSync();
+  supabaseSaveSetting('starred_companies', [...starredCompanies]);
 }
 
 // PROPOSAL NOTES & STAGES PERSISTENCE
@@ -2198,14 +2185,12 @@ function loadProposalData() {
 
 function saveProposalNotes() {
   localStorage.setItem('kennion_proposal_notes', JSON.stringify(proposalNotes));
-  scheduleCloudSync();
-  scheduleSupabaseSync();
+  supabaseSaveSetting('proposal_notes', proposalNotes);
 }
 
 function saveProposalStages() {
   localStorage.setItem('kennion_proposal_stages', JSON.stringify(proposalStages));
-  scheduleCloudSync();
-  scheduleSupabaseSync();
+  supabaseSaveSetting('proposal_stages', proposalStages);
 }
 
 // ──────────────────────────────────────────────
@@ -2223,13 +2208,11 @@ function loadFollowUpData() {
 }
 function saveFollowUpCompanies() {
   localStorage.setItem('kennion_followup_companies', JSON.stringify([...followUpCompanies]));
-  scheduleCloudSync();
-  scheduleSupabaseSync();
+  supabaseSaveSetting('followup_companies', [...followUpCompanies]);
 }
 function saveFollowUpDates() {
   localStorage.setItem('kennion_followup_dates', JSON.stringify(followUpDates));
-  scheduleCloudSync();
-  scheduleSupabaseSync();
+  supabaseSaveSetting('followup_dates', followUpDates);
 }
 
 // ──────────────────────────────────────────────
@@ -2243,8 +2226,7 @@ function loadArchivedCompanies() {
 }
 function saveArchivedCompanies() {
   localStorage.setItem('kennion_archived_companies', JSON.stringify([...archivedCompanies]));
-  scheduleCloudSync();
-  scheduleSupabaseSync();
+  supabaseSaveSetting('archived_companies', [...archivedCompanies]);
 }
 
 // ──────────────────────────────────────────────
@@ -2258,8 +2240,7 @@ function loadMergedDomains() {
 }
 function saveMergedDomains() {
   localStorage.setItem('kennion_merged_domains', JSON.stringify(mergedDomains));
-  scheduleCloudSync();
-  scheduleSupabaseSync();
+  supabaseSaveSetting('merged_domains', mergedDomains);
 }
 // Resolve a domain to its primary (follow chain)
 function resolveMergedDomain(domain) {
@@ -2291,8 +2272,7 @@ function loadFlaggedCompanies() {
 }
 function saveFlaggedCompanies() {
   localStorage.setItem('kennion_flagged_companies', JSON.stringify([...flaggedCompanies]));
-  scheduleCloudSync();
-  scheduleSupabaseSync();
+  supabaseSaveSetting('flagged_companies', [...flaggedCompanies]);
 }
 
 // ──────────────────────────────────────────────
@@ -2659,7 +2639,7 @@ async function supabaseEnsureUser(microsoftId, email, displayName) {
 function scheduleSupabaseSync() {
   if (!supabaseReady || !supabaseUserId) return;
   if (supabaseSyncTimer) clearTimeout(supabaseSyncTimer);
-  supabaseSyncTimer = setTimeout(() => { syncToSupabase(); }, 3000);
+  supabaseSyncTimer = setTimeout(() => { syncToSupabase(); }, 1000);
 }
 
 async function syncToSupabase() {
@@ -2752,6 +2732,18 @@ async function syncToSupabase() {
       contact_name_overrides: contactNameOverrides,
       company_name_cache: companyNameCache,
       blocked_domains: [...blockedDomains],
+      starred_contacts: starredContacts,
+      starred_companies: [...starredCompanies],
+      proposal_notes: proposalNotes,
+      proposal_stages: proposalStages,
+      followup_companies: [...followUpCompanies],
+      followup_dates: followUpDates,
+      archived_companies: [...archivedCompanies],
+      flagged_companies: [...flaggedCompanies],
+      merged_domains: mergedDomains,
+      custom_column_data: customColumnData,
+      enrichment_cache: enrichmentCache,
+      contact_enrichment: contactEnrichment,
     };
     for (const [key, value] of Object.entries(settingsToSync)) {
       const { error } = await supabaseClient
@@ -2889,6 +2881,18 @@ async function loadFromSupabase() {
             case 'contact_name_overrides': if (val) Object.assign(contactNameOverrides, val); break;
             case 'company_name_cache': if (val) Object.assign(companyNameCache, val); break;
             case 'blocked_domains': if (val && val.length > 0) val.forEach(d => blockedDomains.add(d)); break;
+            case 'starred_contacts': if (val) Object.assign(starredContacts, val); break;
+            case 'starred_companies': if (val && val.length > 0) val.forEach(d => starredCompanies.add(d)); break;
+            case 'proposal_notes': if (val) Object.assign(proposalNotes, val); break;
+            case 'proposal_stages': if (val) Object.assign(proposalStages, val); break;
+            case 'followup_companies': if (val && val.length > 0) val.forEach(d => followUpCompanies.add(d)); break;
+            case 'followup_dates': if (val) Object.assign(followUpDates, val); break;
+            case 'archived_companies': if (val && val.length > 0) val.forEach(d => archivedCompanies.add(d)); break;
+            case 'flagged_companies': if (val && val.length > 0) val.forEach(d => flaggedCompanies.add(d)); break;
+            case 'merged_domains': if (val) Object.assign(mergedDomains, val); break;
+            case 'custom_column_data': if (val) Object.assign(customColumnData, val); break;
+            case 'enrichment_cache': if (val) Object.assign(enrichmentCache, val); break;
+            case 'contact_enrichment': if (val) Object.assign(contactEnrichment, val); break;
           }
         } catch(e) { console.warn('Supabase: setting parse error for ' + s.key + ':', e); }
       }
@@ -2953,17 +2957,9 @@ function updateSupabaseBadge(status) {
   }
 }
 
-// ──────────────────────────────────────────────
-// CLOUD SYNC (legacy stubs — OneDrive removed, Supabase is source of truth)
-// ──────────────────────────────────────────────
-function setSyncBadge() {} // no-op
-function updateBlockedSyncStatus() {} // no-op
-function gatherSyncPayload() { return {}; } // kept for export backup
-
-// scheduleCloudSync — now just triggers Supabase sync (OneDrive removed)
-function scheduleCloudSync() {
-  scheduleSupabaseSync();
-}
+// Legacy OneDrive stubs (no-op)
+function setSyncBadge() {}
+function gatherSyncPayload() { return {}; }
 
 // ──────────────────────────────────────────────
 // MSAL SETUP
@@ -3896,7 +3892,7 @@ function updateLastSyncDisplay() {
 function setSyncBadge(state, text) {
   const badge = document.getElementById('syncBadge');
   badge.className = 'sync-badge' + (state === 'scanning' ? ' scanning' : state === 'error' ? ' error' : state === 'success' ? ' success' : '');
-  const displayText = text || (state === 'scanning' ? 'Syncing...' : state === 'error' ? 'Error' : 'Saved to cloud');
+  const displayText = text || (state === 'scanning' ? 'Syncing...' : state === 'error' ? 'Error' : 'Saved');
   document.getElementById('syncBadgeText').textContent = displayText;
   // Auto-clear "Saved" status after 3 seconds
   if (state === 'success') {
@@ -3904,7 +3900,7 @@ function setSyncBadge(state, text) {
       const current = document.getElementById('syncBadgeText').textContent;
       if (current === displayText) {
         badge.className = 'sync-badge';
-        document.getElementById('syncBadgeText').textContent = 'Cloud synced';
+        document.getElementById('syncBadgeText').textContent = 'Synced';
       }
     }, 3000);
   }
@@ -3973,20 +3969,20 @@ async function onSignedIn() {
           for (const id of d.receivedIds) seenMsgIds.add(id);
         }
         hasData = true;
-        // Save settings that came from Supabase to localStorage for offline use
-        saveCompanyTypes();
-        saveBlockedDomains();
-        saveStarredCompanies();
-        saveArchivedCompanies();
-        saveFlaggedCompanies();
-        saveFollowUpCompanies();
-        saveFollowUpDates();
-        saveMergedDomains();
-        saveColumnConfig();
-        saveCompanyNameCache();
-        saveContactNameOverrides();
-        saveProposalNotes();
-        saveProposalStages();
+        // Cache Supabase data to localStorage for fast startup
+        localStorage.setItem('kennion_company_types', JSON.stringify(companyTypes));
+        localStorage.setItem('relateflow_blocked_domains', JSON.stringify([...blockedDomains]));
+        localStorage.setItem('kennion_starred_companies', JSON.stringify([...starredCompanies]));
+        localStorage.setItem('kennion_archived_companies', JSON.stringify([...archivedCompanies]));
+        localStorage.setItem('kennion_flagged_companies', JSON.stringify([...flaggedCompanies]));
+        localStorage.setItem('kennion_followup_companies', JSON.stringify([...followUpCompanies]));
+        localStorage.setItem('kennion_followup_dates', JSON.stringify(followUpDates));
+        localStorage.setItem('kennion_merged_domains', JSON.stringify(mergedDomains));
+        localStorage.setItem('kennion_columns', JSON.stringify(columnConfig));
+        localStorage.setItem('relateflow_company_names', JSON.stringify(companyNameCache));
+        localStorage.setItem('relateflow_contact_names', JSON.stringify(contactNameOverrides));
+        localStorage.setItem('kennion_proposal_notes', JSON.stringify(proposalNotes));
+        localStorage.setItem('kennion_proposal_stages', JSON.stringify(proposalStages));
         buildCompaniesFromDomainMap();
         renderTableHeader();
         renderTable();
@@ -5045,13 +5041,12 @@ function updateBlockedSyncStatus() {
   const el = document.getElementById("blockedSyncText");
   if (!el) return;
   const statusEl = document.getElementById("blockedSyncStatus");
-  el.textContent = blockedDomains.size + " domains backed up to Supabase";
+  el.textContent = blockedDomains.size + " domains synced to database";
   if (statusEl) {
     statusEl.style.background = "rgba(52,168,83,.08)";
     statusEl.style.borderColor = "rgba(52,168,83,.15)";
     statusEl.style.color = "#34a853";
   }
-}
 }
 
 function showBlockedView() {
@@ -7961,6 +7956,7 @@ function getEmailSignature() {
 
 function saveEmailSignature(sig) {
   localStorage.setItem('kennion_email_signature', sig);
+  supabaseSaveSetting('email_signature', sig);
 }
 
 // ── EMAIL THROTTLE ──
@@ -7973,7 +7969,7 @@ function getThrottleSettings() {
 
 function saveThrottleSettingsToStorage(settings) {
   localStorage.setItem('kennion_email_throttle', JSON.stringify(settings));
-  scheduleCloudSync();
+  scheduleSupabaseSync();
 }
 
 function getEmailSendLog() {
@@ -8068,7 +8064,7 @@ function saveSignatureFromSettings() {
   var val = document.getElementById('settingsSignatureInput').value;
   saveEmailSignature(val);
   persistData();
-  scheduleCloudSync();
+  scheduleSupabaseSync();
   var status = document.getElementById('signatureSaveStatus');
   var btn = document.getElementById('saveSignatureBtn');
   status.textContent = '\u2713 Signature saved';
@@ -8119,7 +8115,7 @@ async function fetchOutlookSignature() {
     var plainSig = htmlToPlainText(sigHtml).trim();
     if (!plainSig) return;
     saveEmailSignature(plainSig);
-    scheduleCloudSync();
+    scheduleSupabaseSync();
     console.log('Outlook signature imported successfully');
     // Update settings textarea if visible
     var el = document.getElementById('settingsSignatureInput');
@@ -8263,7 +8259,7 @@ function hideSettingsView() {
     const sigEl = document.getElementById('settingsSignatureInput');
     if (sigEl && sigEl.value !== getEmailSignature()) {
       saveEmailSignature(sigEl.value);
-      scheduleCloudSync();
+      scheduleSupabaseSync();
     }
   }
 }
@@ -8307,98 +8303,7 @@ async function saveSettingsClientId() {
   await signIn();
 }
 
-// ──────────────────────────────────────────────
-// CLOUD SYNC & BACKUP UI ACTIONS
-// ──────────────────────────────────────────────
-function getCloudStatusEl() {
-  // Prefer settings view element (new), fall back to modal element (old)
-  return document.getElementById('settingsCloudSyncStatus') || document.getElementById('cloudSyncStatus');
-}
-function getCloudVersionListEl() {
-  return document.getElementById('settingsCloudVersionList') || document.getElementById('cloudVersionList');
-}
-
-// Legacy OneDrive manual sync functions removed — Supabase is source of truth
-function manualCloudSave() {}
-function manualCloudRestore() {}
-
-function showCloudVersionHistory() {} // OneDrive version history removed
-
-// Legacy OneDrive recovery functions removed — Supabase is source of truth
-function restoreCloudVersion() {}
-function autoRecoverCompanyTypes() {}
-function autoRecoverBlockedDomains() {}
-
-function exportBackup() {
-  const payload = {
-    version: 4,
-    exportedAt: new Date().toISOString(),
-    userEmail: userEmail,
-    companies: Object.keys(domainMap).length,
-    settings: {
-      company_types: companyTypes,
-      blocked_domains: [...blockedDomains],
-      starred_companies: [...starredCompanies],
-      archived_companies: [...archivedCompanies],
-      flagged_companies: [...flaggedCompanies],
-      followup_companies: [...followUpCompanies],
-      followup_dates: followUpDates,
-      proposal_notes: proposalNotes,
-      proposal_stages: proposalStages,
-      starred_contacts: starredContacts,
-      column_config: columnConfig,
-      custom_column_data: customColumnData,
-      company_names: companyNameCache,
-      contact_names: contactNameOverrides,
-    }
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'kennion-crm-backup-' + new Date().toISOString().slice(0, 10) + '.json';
-  a.click();
-}
-
-function importBackup(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      const data = JSON.parse(e.target.result);
-      if (!data.version || !data.settings) { alert('Invalid backup file.'); return; }
-      if (!confirm('This will merge the backup with your current data. Continue?')) return;
-      const s = data.settings;
-      if (s.company_types) Object.assign(companyTypes, s.company_types);
-      if (s.blocked_domains) s.blocked_domains.forEach(d => blockedDomains.add(d));
-      if (s.starred_companies) s.starred_companies.forEach(d => starredCompanies.add(d));
-      if (s.archived_companies) s.archived_companies.forEach(d => archivedCompanies.add(d));
-      if (s.flagged_companies) s.flagged_companies.forEach(d => flaggedCompanies.add(d));
-      if (s.followup_companies) s.followup_companies.forEach(d => followUpCompanies.add(d));
-      if (s.followup_dates) Object.assign(followUpDates, s.followup_dates);
-      if (s.proposal_notes) Object.assign(proposalNotes, s.proposal_notes);
-      if (s.proposal_stages) Object.assign(proposalStages, s.proposal_stages);
-      if (s.starred_contacts) Object.assign(starredContacts, s.starred_contacts);
-      if (s.column_config) columnConfig = s.column_config;
-      if (s.custom_column_data) Object.assign(customColumnData, s.custom_column_data);
-      if (s.company_names) Object.assign(companyNameCache, s.company_names);
-      if (s.contact_names) Object.assign(contactNameOverrides, s.contact_names);
-      buildCompaniesFromDomainMap();
-      renderTableHeader();
-      renderTable();
-      updateStats();
-      updateBlockedCount();
-      updateFlaggedCount();
-      persistData();
-      scheduleCloudSync();
-      alert('Backup imported! (' + Object.keys(domainMap).length + ' domains)');
-    } catch(err) {
-      alert('Failed to parse backup file: ' + err.message);
-    }
-  };
-  reader.readAsText(file);
-  event.target.value = '';
-}
+// Legacy cloud/backup functions removed — Supabase handles all data persistence
 
 // ──────────────────────────────────────────────
 // BLOCKED DOMAINS MANAGEMENT
