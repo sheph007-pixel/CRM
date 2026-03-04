@@ -2521,7 +2521,6 @@ let supabaseUserId = null;
 let supabaseReady = false;
 let supabaseSyncTimer = null;
 let supabaseSyncInProgress = false;
-let _syncCount = 0;
 
 // Supabase config — hardcoded (anon key is safe to expose, like Firebase config)
 const SUPABASE_URL = 'https://hkfdapvulzpnrwcgxyrx.supabase.co';
@@ -2609,23 +2608,8 @@ async function syncToSupabase() {
   supabaseSyncInProgress = true;
   const syncStart = Date.now();
   try {
-    // ── PULL BEFORE PUSH: merge metadata from other devices ──
-    // Skip during startup — we just loaded fresh data from Supabase.
-    // Only pull on subsequent syncs (user edits, periodic saves).
-    if (_syncCount > 0) {
-      try {
-        const remoteCompanies = await supabaseFetchAll('companies',
-          'domain, company_type, is_starred, is_archived, is_flagged, is_blocked, is_followup, followup_date, proposal_stage, proposal_notes, merged_into',
-          { user_id: supabaseUserId });
-        if (remoteCompanies && remoteCompanies.length > 0) {
-          for (const rc of remoteCompanies) {
-            if (!domainMap[rc.domain]) continue;
-            applyCompanyChange(rc);
-          }
-        }
-      } catch(e) { console.warn('Supabase: pull-before-push failed (continuing):', e); }
-    }
-    _syncCount++;
+    // Pull-before-push removed — Supabase realtime + polling handles cross-device sync.
+    // Pulling ALL companies before every push doubled network time for no benefit.
 
     // Sync companies + contacts in batches — read all metadata from domainMap (single source of truth)
     const companyRows = [];
@@ -2805,33 +2789,13 @@ async function loadFromSupabase() {
     console.log('Supabase: loading data...');
     const loadStart = Date.now();
 
-    // 2-phase load: fast columns first (no heavy JSONB), then enrichment deferred
-    const COMPANY_FAST_COLS = 'id,domain,company_name,company_type,is_starred,is_archived,is_flagged,is_blocked,is_followup,followup_date,last_activity_date,last_sent_date,last_received_date,sent_count,received_count,proposal_stage,proposal_notes,merged_into,custom_data';
-    const CONTACT_FAST_COLS = 'id,company_id,email,name,is_starred,last_activity_date,sent_count,received_count';
+    // Simple: load everything in parallel, one query per table
     const [companyData, contactData, settingsResult, scanResult] = await Promise.all([
-      supabaseFetchAll('companies', COMPANY_FAST_COLS, { user_id: supabaseUserId }),
-      supabaseFetchAll('contacts', CONTACT_FAST_COLS, { user_id: supabaseUserId }),
+      supabaseFetchAll('companies', '*', { user_id: supabaseUserId }),
+      supabaseFetchAll('contacts', '*', { user_id: supabaseUserId }),
       supabaseClient.from('user_settings').select('key, value').eq('user_id', supabaseUserId),
       supabaseClient.from('scan_metadata').select('*').eq('user_id', supabaseUserId).order('updated_at', { ascending: false }).limit(1).maybeSingle()
     ]);
-    // Deferred: load heavy JSONB columns (enrichment) in background after render
-    setTimeout(async () => {
-      try {
-        const enrichRows = await supabaseFetchAll('companies', 'domain,enrichment', { user_id: supabaseUserId });
-        if (enrichRows) {
-          for (const r of enrichRows) {
-            if (r.enrichment && Object.keys(r.enrichment).length > 0) enrichmentCache[r.domain] = r.enrichment;
-          }
-        }
-        const ctEnrichRows = await supabaseFetchAll('contacts', 'email,enrichment', { user_id: supabaseUserId });
-        if (ctEnrichRows) {
-          for (const r of ctEnrichRows) {
-            if (r.enrichment && Object.keys(r.enrichment).length > 0) contactEnrichment[r.email] = r.enrichment;
-          }
-        }
-        console.log('Supabase: deferred enrichment loaded');
-      } catch(e) { console.warn('Supabase: deferred enrichment load failed:', e); }
-    }, 2000);
 
     if (!companyData || companyData.length === 0) {
       console.log('Supabase: no companies found (first time)');
@@ -3969,14 +3933,8 @@ async function fetchEmailsProgressively(token, useDelta) {
         processEmailBatch(regular);
       }
 
-      // Throttle UI: only rebuild table every 15 pages to reduce DOM work
-      // Use requestAnimationFrame to avoid blocking the main thread
-      if (page === 1 || page % 15 === 0) {
-        await new Promise(r => requestAnimationFrame(r));
-        buildCompaniesFromDomainMap();
-        renderTable();
-        updateStats();
-      }
+      // Don't re-render table during scan — data is already showing from DB.
+      // Only update at the very end (in scanOutlookEmails after this function returns).
       // Only show progress during full scans
       if (!useDelta) {
         updateScanBanner('Scanning... ' + totalFetched.toLocaleString() + ' emails' + (totalRemoved > 0 ? ', ' + totalRemoved + ' removed' : '') + ' — ' + companies.length + ' companies');
@@ -4074,20 +4032,23 @@ async function scanOutlookEmails(forceFullScan) {
     setSyncBadge('success', 'Saved');
     updateLastSyncDisplay();
 
+    // Single final render after scan completes — no mid-scan re-renders
+    if (totalFetched > 0) {
+      buildCompaniesFromDomainMap();
+      renderTable();
+      updateStats();
+    }
+
     if (needsFullScan) {
-      // Full scan: run all enrichment tasks
+      // Full scan: run enrichment tasks in background
       scheduleDomainScan();
       resolveCompanyNames();
       runEnrichment();
       setTimeout(function() { aiScanAllEmails(); }, 2000);
       setTimeout(() => { hideScanBanner(); }, 4000);
-    } else {
-      // Incremental sync: just update the table quietly, skip heavy enrichment
-      if (totalFetched > 0) {
-        buildCompaniesFromDomainMap();
-        renderTable();
-        updateStats();
-      }
+    } else if (totalFetched > 0) {
+      // Incremental: just hide banner
+      setTimeout(() => { hideScanBanner(); }, 2000);
     }
 
   } catch(e) {
@@ -4264,7 +4225,6 @@ async function onSignedIn(unused, supabasePromise) {
       renderTable();
       updateStats();
       updateLastSyncDisplay();
-      saveLocalCache();
       resolveCompanyNames();
       updateSupabaseBadge('success');
       console.log('Startup: Supabase loaded — ' + Object.keys(domainMap).length + ' domains, ' + companies.length + ' companies in ' + (Date.now() - startupTime) + 'ms');
@@ -4281,41 +4241,14 @@ async function onSignedIn(unused, supabasePromise) {
   if (companies.length > 0) scheduleDomainScan();
   updateLastScanLabel();
 
-  // Step 3: Email scan — only ADDS new emails, never removes existing data
-  // Detect corrupted counts: if DB has companies but most have sent_count=0,
-  // a previous bug wiped the counts. Force full rescan to recover real counts.
-  // Only trigger if fullScanDone was true (meaning counts SHOULD be populated)
-  // and a supermajority (>80%) have zero counts. Previous 50% threshold caused
-  // false positives on every load.
-  let needsCountRecovery = false;
-  if (hasData && fullScanDone) {
-    const domains = Object.entries(domainMap);
-    // Only check non-blocked, non-archived, non-flagged domains
-    const activeDomains = domains.filter(([d, v]) => v._fromDb && !v.is_blocked && !v.is_archived && !v.is_flagged);
-    const zeroCountDomains = activeDomains.filter(([d, v]) => v._dbSentCount === 0 && v._dbReceivedCount === 0);
-    if (activeDomains.length > 10 && zeroCountDomains.length > activeDomains.length * 0.8) {
-      console.log('Startup: detected corrupted counts (' + zeroCountDomains.length + '/' + activeDomains.length + ' active domains have zero counts) — forcing full rescan');
-      needsCountRecovery = true;
-      fullScanDone = false;
-      deltaLink = null;
-    }
-  }
-
-  if (cloudOnlyRestore) {
-    // Cloud-only restore: need full rescan to get real email IDs (cloud v3 only has counts)
-    console.log('Startup: cloud-only restore detected — running full email rescan');
-    await scanOutlookEmails();
-  } else if (needsCountRecovery) {
-    // Corrupted counts detected — full rescan to rebuild (keeps existing domainMap data)
-    console.log('Startup: running full rescan to recover email counts...');
-    await scanOutlookEmails();
-  } else if (hasData) {
-    // Data loaded from DB — UI is already showing. Run a quiet background sync
-    // after a short delay so the UI stays responsive. No banners, no blocking.
-    console.log('Startup: data loaded from DB — scheduling quiet background sync');
+  // Step 3: Email scan — always runs in background, never blocks UI.
+  // DB data is already displayed. Scan just adds new emails silently.
+  if (hasData) {
+    // Data from DB is showing — run email sync quietly in background
+    console.log('Startup: data loaded — scheduling background email sync');
     setTimeout(() => { scanOutlookEmails(); }, 3000);
   } else {
-    // First time ever — need full scan to populate
+    // First time or empty DB — need full scan to populate
     await scanOutlookEmails();
   }
 
@@ -4772,14 +4705,8 @@ function updateTypeCounts() {
   updateStats();
 }
 
-// Save a lightweight snapshot after stats update so the local cache
-// stays fresh for instant rendering on next page load.
-// Debounced to avoid hammering localStorage on rapid updates.
-let _snapshotTimer = null;
-function saveInstantSnapshot() {
-  if (_snapshotTimer) clearTimeout(_snapshotTimer);
-  _snapshotTimer = setTimeout(() => { _snapshotTimer = null; saveLocalCache(); }, 2000);
-}
+// Snapshots disabled — Supabase is sole source of truth. No localStorage rendering.
+function saveInstantSnapshot() { /* no-op */ }
 function loadInstantSnapshot() { return false; }
 
 function setViewTitle(title, showDashboard) {
