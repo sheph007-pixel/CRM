@@ -2693,14 +2693,12 @@ async function loadFromSupabase() {
     console.log('Supabase: loading data...');
     const loadStart = Date.now();
 
-    // Phase 1: Load core data (no heavy JSONB) for fast initial render
-    const companyCols = 'id,domain,company_name,company_type,is_starred,is_archived,is_flagged,is_blocked,is_followup,followup_date,last_activity_date,last_sent_date,last_received_date,sent_count,received_count,proposal_stage,proposal_notes,merged_into';
-    const contactCols = 'company_id,email,name,is_starred,last_activity_date,sent_count,received_count';
+    // Load all data in parallel — one round trip per table
     const [companyData, contactData, settingsResult, scanResult] = await Promise.all([
-      supabaseFetchAll('companies', companyCols, { user_id: supabaseUserId }),
-      supabaseFetchAll('contacts', contactCols, { user_id: supabaseUserId }),
+      supabaseFetchAll('companies', '*', { user_id: supabaseUserId }),
+      supabaseFetchAll('contacts', '*', { user_id: supabaseUserId }),
       supabaseClient.from('user_settings').select('key, value').eq('user_id', supabaseUserId),
-      supabaseClient.from('scan_metadata').select('last_scan_time,full_scan_done,delta_link').eq('user_id', supabaseUserId).order('updated_at', { ascending: false }).limit(1).maybeSingle()
+      supabaseClient.from('scan_metadata').select('*').eq('user_id', supabaseUserId).order('updated_at', { ascending: false }).limit(1).maybeSingle()
     ]);
 
     if (!companyData || companyData.length === 0) {
@@ -2746,9 +2744,10 @@ async function loadFromSupabase() {
         followup_date: c.followup_date || null,
         merged_into: c.merged_into || null,
       };
-      // Restore company name cache from company row
+      // Restore caches from company row
       if (c.company_name) companyNameCache[c.domain] = c.company_name;
-      // enrichment and custom_data loaded in Phase 2 (deferred) to speed up initial render
+      if (c.enrichment && Object.keys(c.enrichment).length > 0) enrichmentCache[c.domain] = c.enrichment;
+      if (c.custom_data && Object.keys(c.custom_data).length > 0) customColumnData[c.domain] = c.custom_data;
     }
 
     // Add contacts to their companies
@@ -2766,7 +2765,9 @@ async function loadFromSupabase() {
           _dbReceivedCount: ct.received_count || 0,
         };
         if (ct.is_starred) starredContacts[domain] = ct.email;
-        // contact enrichment loaded in Phase 2 (deferred)
+        if (ct.enrichment && Object.keys(ct.enrichment).length > 0) {
+          contactEnrichment[ct.email] = ct.enrichment;
+        }
       }
     }
 
@@ -2815,30 +2816,7 @@ async function loadFromSupabase() {
 
     const elapsed = ((Date.now() - loadStart) / 1000).toFixed(1);
     console.log('Supabase: loaded ' + companyData.length + ' companies, ' + (contactData ? contactData.length : 0) + ' contacts in ' + elapsed + 's');
-
-    // Phase 2 loader: fetch enrichment/custom JSONB data in background (heavy payload)
-    const loadEnrichment = async function() {
-      try {
-        const [enrichData, ctEnrichData] = await Promise.all([
-          supabaseFetchAll('companies', 'domain,enrichment,custom_data', { user_id: supabaseUserId }),
-          supabaseFetchAll('contacts', 'email,enrichment', { user_id: supabaseUserId })
-        ]);
-        if (enrichData) {
-          for (const c of enrichData) {
-            if (c.enrichment && Object.keys(c.enrichment).length > 0) enrichmentCache[c.domain] = c.enrichment;
-            if (c.custom_data && Object.keys(c.custom_data).length > 0) customColumnData[c.domain] = c.custom_data;
-          }
-        }
-        if (ctEnrichData) {
-          for (const ct of ctEnrichData) {
-            if (ct.enrichment && Object.keys(ct.enrichment).length > 0) contactEnrichment[ct.email] = ct.enrichment;
-          }
-        }
-        console.log('Supabase: enrichment data loaded in background');
-      } catch(e) { console.warn('Supabase: enrichment load error:', e); }
-    };
-
-    return { domainMap: newDomainMap, scanMeta: scanMeta, loadEnrichment: loadEnrichment };
+    return { domainMap: newDomainMap, scanMeta: scanMeta };
   } catch(e) {
     console.warn('Supabase: load error:', e);
     return null;
@@ -4122,13 +4100,11 @@ async function onSignedIn() {
   document.getElementById('globalSearchWrap').style.display = '';
   document.getElementById('aiFab').classList.remove('hidden');
 
-  // ── STEP 1: INSTANT RENDER FROM LOCAL CACHE ──
-  // Show cached data immediately (no network wait). Supabase syncs in background.
   let hasData = false;
   let cloudOnlyRestore = false;
   const startupTime = Date.now();
-  var loadingOverlay = document.getElementById('tableLoadingOverlay');
 
+  // ── STEP 1: INSTANT RENDER FROM LOCAL CACHE ──
   const cached = loadLocalCache();
   if (cached && cached.domainMap && Object.keys(cached.domainMap).length > 0) {
     domainMap = cached.domainMap;
@@ -4140,91 +4116,42 @@ async function onSignedIn() {
     renderTable();
     updateStats();
     updateLastSyncDisplay();
-    console.log('Startup: rendered ' + companies.length + ' companies from local cache in ' + (Date.now() - startupTime) + 'ms');
-  } else {
-    // No cache — show loading spinner while we fetch from Supabase
-    if (loadingOverlay) { loadingOverlay.style.display = ''; document.querySelector('.table-wrap').style.display = 'none'; }
+    console.log('Startup: rendered ' + companies.length + ' companies from cache in ' + (Date.now() - startupTime) + 'ms');
   }
 
-  // ── STEP 2: SUPABASE SYNC (background if cache existed) ──
-  const supabaseInited = initSupabase();
-  let userRegistrationPromise = null;
-
-  if (supabaseInited && supabaseReady) {
+  // ── STEP 2: SUPABASE — register user + load fresh data ──
+  // initSupabase() already called in init() warmup ping
+  if (!supabaseReady) initSupabase();
+  if (supabaseReady) {
     const msId = currentAccount.homeAccountId || currentAccount.localAccountId || currentAccount.username;
-    userRegistrationPromise = supabaseEnsureUser(msId, userEmail, currentAccount.name || userEmail);
-    if (!hasData) {
-      // No cache — must wait for user registration before we can query
-      await userRegistrationPromise;
-    }
+    await supabaseEnsureUser(msId, userEmail, currentAccount.name || userEmail);
   }
 
-  // For the cache path, supabaseUserId may not be set yet — sync will await registration
-  const canSync = supabaseReady && (supabaseUserId || userRegistrationPromise);
-  if (canSync) {
-    const prevDomainCount = Object.keys(domainMap).length;
-    const doSupabaseSync = async () => {
-      // Ensure user registration is complete before querying
-      if (userRegistrationPromise && !supabaseUserId) {
-        await userRegistrationPromise;
-      }
-      if (!supabaseUserId) return;
-      try {
-        const sbData = await loadFromSupabase();
-        if (sbData && sbData.domainMap && Object.keys(sbData.domainMap).length > 0) {
-          const newCount = Object.keys(sbData.domainMap).length;
-          domainMap = sbData.domainMap;
-          if (sbData.scanMeta) {
-            lastScanTime = sbData.scanMeta.lastScanTime;
-            fullScanDone = sbData.scanMeta.fullScanDone || false;
-            deltaLink = sbData.scanMeta.deltaLink || null;
-          }
-          seenMsgIds = new Set();
-          hasData = true;
-          // Only re-render if data actually changed or first load
-          if (!prevDomainCount || newCount !== prevDomainCount) {
-            // Yield to main thread before heavy work so UI stays responsive
-            await new Promise(r => setTimeout(r, 0));
-            buildCompaniesFromDomainMap();
-            renderTableHeader();
-            renderTable();
-            updateStats();
-          }
-          updateLastSyncDisplay();
-          saveLocalCache();
-          // Load enrichment in background with yield
-          if (sbData.loadEnrichment) {
-            setTimeout(() => {
-              sbData.loadEnrichment().then(() => { renderTable(); saveLocalCache(); });
-            }, 100);
-          }
-          resolveCompanyNames();
-          updateSupabaseBadge('success');
-          console.log('Startup: Supabase sync complete — ' + newCount + ' domains in ' + (Date.now() - startupTime) + 'ms');
+  if (supabaseReady && supabaseUserId) {
+    try {
+      const sbData = await loadFromSupabase();
+      if (sbData && sbData.domainMap && Object.keys(sbData.domainMap).length > 0) {
+        domainMap = sbData.domainMap;
+        if (sbData.scanMeta) {
+          lastScanTime = sbData.scanMeta.lastScanTime;
+          fullScanDone = sbData.scanMeta.fullScanDone || false;
+          deltaLink = sbData.scanMeta.deltaLink || null;
         }
-      } catch(e) {
-        console.warn('Startup: Supabase sync failed (using cache):', e);
+        seenMsgIds = new Set();
+        hasData = true;
+        buildCompaniesFromDomainMap();
+        renderTableHeader();
+        renderTable();
+        updateStats();
+        updateLastSyncDisplay();
+        saveLocalCache();
+        resolveCompanyNames();
+        updateSupabaseBadge('success');
+        console.log('Startup: loaded from Supabase — ' + Object.keys(domainMap).length + ' domains in ' + (Date.now() - startupTime) + 'ms');
       }
-      // Hide loading overlay if it was showing
-      if (loadingOverlay && loadingOverlay.style.display !== 'none') {
-        loadingOverlay.style.display = 'none';
-        document.querySelector('.table-wrap').style.display = '';
-      }
-    };
-
-    if (hasData) {
-      // Already rendered from cache — sync quietly in background
-      doSupabaseSync();
-    } else {
-      // No cache — must wait for Supabase
-      if (loadingOverlay) document.getElementById('tableLoadingMsg').textContent = 'Loading companies & contacts...';
-      await doSupabaseSync();
-    }
-  } else {
-    // Supabase not available — hide overlay if showing
-    if (loadingOverlay && loadingOverlay.style.display !== 'none') {
-      loadingOverlay.style.display = 'none';
-      document.querySelector('.table-wrap').style.display = '';
+    } catch(e) {
+      console.warn('Startup: Supabase load failed:', e);
+      // If cache was loaded, we're fine — just using cached data
     }
   }
 
@@ -9642,8 +9569,15 @@ function esc(text) {
   loadLogoFailedCache();
   renderTableHeader();
 
-  // No localStorage snapshot — Supabase is the sole source of truth.
-  // Data will load from the database after sign-in.
+  // Warm up Supabase NOW (fires during MSAL init so DB wakes up in parallel)
+  // Free-tier Supabase databases sleep after inactivity — this ping wakes them.
+  try {
+    if (initSupabase()) {
+      supabaseClient.from('users').select('id').limit(1).maybeSingle().then(() => {
+        console.log('Supabase: warmup ping complete');
+      }).catch(() => {});
+    }
+  } catch(e) {}
 
   // Safety timeout — if MSAL loading takes too long, show welcome screen
   let welcomed = false;
