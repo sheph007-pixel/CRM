@@ -757,7 +757,7 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
     <svg viewBox="0 0 28 28" fill="none"><rect width="28" height="28" rx="7" fill="#1a73e8"/><path d="M8 14l4 4 8-8" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
     Kennion CRM
   </div>
-  <div class="global-search-wrap" id="globalSearchWrap">
+  <div class="global-search-wrap" id="globalSearchWrap" style="display:none">
     <div class="global-search-box">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
       <input type="text" id="globalSearchInput" placeholder="Search companies, contacts..." autocomplete="off">
@@ -766,7 +766,7 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
     <div class="global-search-dropdown" id="globalSearchDropdown"></div>
   </div>
   <div class="topbar-actions" id="topbarActions">
-    <button class="btn btn-ghost btn-sm" id="settingsBtn" onclick="openSettings()" style="display:none" title="Configure Azure App">
+    <button class="btn btn-ghost btn-sm" id="settingsBtn" onclick="openSettings()" style="display:none" title="Settings">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.32 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
       Settings
     </button>
@@ -916,7 +916,6 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
           </div>
         </div>
 
-        <p class="welcome-note">First time? You'll need an Azure App registration. Click the gear icon after sign-in to configure, or <a href="#" onclick="openSettings();return false" style="color:var(--accent2)">set it up now</a>.</p>
       </div>
     </div>
 
@@ -1130,7 +1129,7 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
           </div>
           <!-- Setup state (shown when not connected) -->
           <div id="settingsSetupState">
-            <p class="settings-desc">Connect your Outlook by registering an Azure App. Your Client ID is stored only in your browser.</p>
+            <p class="settings-desc">Connect your Microsoft account to sync your Outlook emails.</p>
             <div class="settings-field">
               <label>Application (Client) ID</label>
               <div style="display:flex;gap:8px">
@@ -1161,7 +1160,7 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
           <div id="supabaseSyncBadge" style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(26,115,232,.08);border:1px solid rgba(26,115,232,.15);border-radius:6px;margin-bottom:10px;font-size:11px">
             <span style="color:var(--text2)">Not configured</span>
           </div>
-          <p class="settings-desc">Connect to Supabase for reliable server-side PostgreSQL storage with automatic backups. Your data will never be lost — even if you clear your browser, switch devices, or reinstall.</p>
+          <p class="settings-desc">All your data is securely stored in the cloud with automatic backups. Your data is safe across devices — even if you clear your browser.</p>
           <div class="settings-field">
             <label>Supabase Project URL</label>
             <input type="text" id="settingsSupabaseUrl" placeholder="https://your-project.supabase.co" style="width:100%;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12px;font-family:inherit;outline:none">
@@ -1560,7 +1559,7 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
 </div>
 
 <!-- FLOATING AI CHAT WIDGET -->
-<div class="ai-fab" id="aiFab" onclick="toggleAIChat()" title="Kennion AI">
+<div class="ai-fab hidden" id="aiFab" onclick="toggleAIChat()" title="Kennion AI">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
 </div>
 <div class="ai-chat-window" id="aiChatWindow">
@@ -3940,6 +3939,8 @@ function showWelcome() {
   document.getElementById('settingsBtn').style.display = 'none';
   document.getElementById('settingsNavItem').style.display = 'none';
   document.getElementById('settingsView').classList.remove('active');
+  document.getElementById('globalSearchWrap').style.display = 'none';
+  document.getElementById('aiFab').classList.add('hidden');
   document.getElementById('aiChatWindow').classList.remove('open');
   aiChatOpen = false;
 }
@@ -3961,6 +3962,8 @@ async function onSignedIn() {
   document.getElementById('userPill').style.display = 'flex';
   document.getElementById('userName').textContent = userEmail;
   document.getElementById('settingsNavItem').style.display = '';
+  document.getElementById('globalSearchWrap').style.display = '';
+  document.getElementById('aiFab').classList.remove('hidden');
 
   // Supabase is the sole source of truth — load from database first
   let hasData = false;
@@ -8116,15 +8119,8 @@ async function fetchOutlookSignature() {
 }
 
 function openSettings() {
-  // Redirect to settings view if logged in, otherwise open modal for initial setup
   if (currentAccount) {
     showSettingsView();
-  } else {
-    document.getElementById('settingsModal').classList.add('active');
-    document.getElementById('clientIdInput').value = getClientId();
-    document.getElementById('redirectDisplay').textContent = window.location.origin + window.location.pathname;
-    document.getElementById('signatureInput').value = getEmailSignature();
-    renderBlockedDomainsList();
   }
 }
 
