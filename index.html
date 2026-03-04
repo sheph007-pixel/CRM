@@ -2653,6 +2653,39 @@ async function syncToSupabase() {
   supabaseSyncInProgress = true;
   const syncStart = Date.now();
   try {
+    // ── PULL BEFORE PUSH: merge metadata from other devices ──
+    // Fetch the latest user-editable fields from Supabase so we don't
+    // overwrite changes made on another device (e.g. phone changed a
+    // company type while computer still has the old value in memory).
+    try {
+      const { data: remoteCompanies } = await supabaseClient
+        .from('companies')
+        .select('domain, company_type, is_starred, is_archived, is_flagged, is_blocked, is_followup, followup_date, proposal_stage, proposal_notes, merged_into')
+        .eq('user_id', supabaseUserId);
+      if (remoteCompanies) {
+        // Skip domains with pending local edits — those take priority
+        const pending = JSON.parse(localStorage.getItem('kennion_pending_edits') || '{}');
+        for (const rc of remoteCompanies) {
+          const d = rc.domain;
+          if (!domainMap[d]) continue;
+          const domainPending = pending[d] || {};
+          // Only adopt remote value for fields that don't have pending local edits
+          if (rc.company_type && !domainPending.company_type) {
+            companyTypes[d] = rc.company_type.replace(/\b\w/g, l => l.toUpperCase());
+          }
+          if (!domainPending.is_starred) { if (rc.is_starred) starredCompanies.add(d); else starredCompanies.delete(d); }
+          if (!domainPending.is_archived) { if (rc.is_archived) archivedCompanies.add(d); else archivedCompanies.delete(d); }
+          if (!domainPending.is_flagged) { if (rc.is_flagged) flaggedCompanies.add(d); else flaggedCompanies.delete(d); }
+          if (!domainPending.is_blocked) { if (rc.is_blocked) blockedDomains.add(d); else blockedDomains.delete(d); }
+          if (!domainPending.is_followup) { if (rc.is_followup) followUpCompanies.add(d); else followUpCompanies.delete(d); }
+          if (!domainPending.followup_date) { if (rc.followup_date) followUpDates[d] = rc.followup_date; else delete followUpDates[d]; }
+          if (rc.proposal_stage) proposalStages[d] = rc.proposal_stage;
+          if (rc.proposal_notes) proposalNotes[d] = rc.proposal_notes;
+          if (rc.merged_into) mergedDomains[d] = rc.merged_into;
+        }
+      }
+    } catch(e) { console.warn('Supabase: pull-before-push failed (continuing):', e); }
+
     // Sync companies + contacts in batches
     const companyRows = [];
     const contactRows = [];
@@ -2913,14 +2946,90 @@ async function loadFromSupabase() {
   }
 }
 
+// ── PENDING EDITS: track local changes that may not have reached Supabase yet ──
+// When the user edits a field and immediately refreshes, the async Supabase save
+// may still be in-flight. We record pending edits in localStorage (synchronous)
+// and clear them once confirmed saved. On startup we re-apply any that survived.
+function addPendingEdit(domain, field, value) {
+  try {
+    const pending = JSON.parse(localStorage.getItem('kennion_pending_edits') || '{}');
+    if (!pending[domain]) pending[domain] = {};
+    pending[domain][field] = { value: value, ts: Date.now() };
+    localStorage.setItem('kennion_pending_edits', JSON.stringify(pending));
+  } catch(e) {}
+}
+
+function clearPendingEdit(domain, field) {
+  try {
+    const pending = JSON.parse(localStorage.getItem('kennion_pending_edits') || '{}');
+    if (pending[domain]) {
+      delete pending[domain][field];
+      if (Object.keys(pending[domain]).length === 0) delete pending[domain];
+    }
+    localStorage.setItem('kennion_pending_edits', JSON.stringify(pending));
+  } catch(e) {}
+}
+
+function reapplyPendingEdits() {
+  try {
+    const pending = JSON.parse(localStorage.getItem('kennion_pending_edits') || '{}');
+    if (Object.keys(pending).length === 0) return;
+    const MAX_AGE = 5 * 60 * 1000; // ignore edits older than 5 minutes (stale)
+    const now = Date.now();
+    let anyApplied = false;
+    for (const [domain, fields] of Object.entries(pending)) {
+      for (const [field, entry] of Object.entries(fields)) {
+        if (now - entry.ts > MAX_AGE) { clearPendingEdit(domain, field); continue; }
+        // Re-apply to in-memory state
+        const v = entry.value;
+        switch (field) {
+          case 'company_type':
+            if (v) companyTypes[domain] = v.replace(/\b\w/g, l => l.toUpperCase());
+            else delete companyTypes[domain];
+            break;
+          case 'is_starred':
+            if (v) starredCompanies.add(domain); else starredCompanies.delete(domain);
+            break;
+          case 'is_archived':
+            if (v) archivedCompanies.add(domain); else archivedCompanies.delete(domain);
+            break;
+          case 'is_flagged':
+            if (v) flaggedCompanies.add(domain); else flaggedCompanies.delete(domain);
+            break;
+          case 'is_blocked':
+            if (v) blockedDomains.add(domain); else blockedDomains.delete(domain);
+            break;
+          case 'is_followup':
+            if (v) followUpCompanies.add(domain); else followUpCompanies.delete(domain);
+            break;
+          case 'followup_date':
+            if (v) followUpDates[domain] = v; else delete followUpDates[domain];
+            break;
+        }
+        // Re-push to Supabase (this time the page won't unload immediately)
+        supabaseSaveCompanyField(domain, field, v);
+        anyApplied = true;
+      }
+    }
+    if (anyApplied) {
+      console.log('Pending edits re-applied after refresh');
+      buildCompaniesFromDomainMap();
+      renderTable();
+      updateStats();
+    }
+  } catch(e) { console.warn('reapplyPendingEdits error:', e); }
+}
+
 // ── INDIVIDUAL FIELD SAVES (instant updates) ──
 async function supabaseSaveCompanyField(domain, field, value) {
+  addPendingEdit(domain, field, value); // track in case page unloads before save completes
   if (!supabaseReady || !supabaseUserId) return;
   try {
     const row = { user_id: supabaseUserId, domain: domain, [field]: value };
     await supabaseClient
       .from('companies')
       .upsert(row, { onConflict: 'user_id,domain' });
+    clearPendingEdit(domain, field); // confirmed saved — remove from pending
   } catch(e) { console.warn('Supabase: field save failed:', e); }
 }
 
@@ -4075,6 +4184,8 @@ async function onSignedIn() {
         persistData(); // cache locally for offline
         updateSupabaseBadge('success');
         console.log('Startup: loaded ' + Object.keys(domainMap).length + ' domains from Supabase database');
+        // Re-apply any local edits that were in-flight when the page was last closed
+        reapplyPendingEdits();
       }
     } catch(e) {
       console.warn('Startup: Supabase load failed, falling back to local:', e);
