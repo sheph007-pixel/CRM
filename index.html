@@ -2626,6 +2626,37 @@ async function saveToCloud() {
     return;
   }
 
+  // Safety guard: don't overwrite cloud if local company types dropped significantly
+  // This prevents losing categorization work when switching browsers/devices
+  var localTypeCount = Object.keys(companyTypes).length;
+  if (localTypeCount < 5 && currentDomainCount > 20) {
+    // Check if cloud has more types before overwriting
+    try {
+      var checkToken = await getCloudToken();
+      if (checkToken) {
+        var checkResp = await fetch(
+          'https://graph.microsoft.com/v1.0/me/drive/special/approot:/kennion_sync_v3.json:/content',
+          { headers: { 'Authorization': 'Bearer ' + checkToken } }
+        );
+        if (checkResp.ok) {
+          var checkData = await checkResp.json();
+          var cloudTypeCount = checkData.settings && checkData.settings.company_types ? Object.keys(checkData.settings.company_types).length : 0;
+          if (cloudTypeCount > localTypeCount + 10) {
+            console.warn('Cloud save BLOCKED: local has ' + localTypeCount + ' company types but cloud has ' + cloudTypeCount + ' — preserving cloud categorizations');
+            // Restore the cloud types locally instead of overwriting
+            Object.assign(companyTypes, checkData.settings.company_types);
+            saveCompanyTypes();
+            updateTypeCounts();
+            renderTable();
+            return;
+          }
+        }
+      }
+    } catch(guardErr) {
+      console.warn('Cloud save: type guard check failed (proceeding anyway):', guardErr);
+    }
+  }
+
   cloudSyncInProgress = true;
   setSyncBadge('scanning', 'Saving...');
   const saveStart = Date.now();
@@ -3930,9 +3961,13 @@ async function onSignedIn() {
         persistData(); // cache merged data locally
         setSyncBadge('success', 'Synced');
         console.log('Startup: cloud merge complete (' + Object.keys(domainMap).length + ' domains, ' + blockedDomains.size + ' blocked)');
+        // Auto-recover company types if they were lost (e.g., switching browsers)
+        autoRecoverCompanyTypes();
       } else {
         setSyncBadge('success', 'Up to date');
         console.log('Startup: no cloud backup found');
+        // Even without cloud data, try to recover types from version history
+        autoRecoverCompanyTypes();
       }
     } catch(e) {
       console.warn('Startup: cloud merge failed (data safe locally):', e);
@@ -8346,6 +8381,82 @@ async function restoreCloudVersion(fileId, versionId, dateLabel) {
   } catch(e) {
     status.textContent = 'Restore failed: ' + e.message;
     status.style.color = 'var(--red)';
+  }
+}
+
+// Automatically recover company types from OneDrive version history.
+// If the current companyTypes is empty/small but a cloud version had many types,
+// restore from that version. This prevents losing categorization work across devices.
+async function autoRecoverCompanyTypes() {
+  var localTypeCount = Object.keys(companyTypes).length;
+  if (localTypeCount >= 10) return; // already have enough types, no recovery needed
+  if (!currentAccount) return;
+  console.log('Auto-recovery: only ' + localTypeCount + ' company types locally — checking OneDrive version history...');
+  try {
+    const token = await getCloudToken();
+    if (!token) { console.warn('Auto-recovery: no token for type recovery'); return; }
+    const metaResp = await fetch(
+      'https://graph.microsoft.com/v1.0/me/drive/special/approot:/kennion_sync_v3.json',
+      { headers: { 'Authorization': 'Bearer ' + token } }
+    );
+    if (!metaResp.ok) return;
+    const fileMeta = await metaResp.json();
+    const fileId = fileMeta.id;
+
+    const versResp = await fetch(
+      'https://graph.microsoft.com/v1.0/me/drive/items/' + fileId + '/versions',
+      { headers: { 'Authorization': 'Bearer ' + token } }
+    );
+    if (!versResp.ok) return;
+    const versData = await versResp.json();
+    const versions = (versData.value || []).sort((a, b) => new Date(b.lastModifiedDateTime) - new Date(a.lastModifiedDateTime));
+
+    console.log('Auto-recovery: checking ' + versions.length + ' cloud versions for company types');
+
+    let bestTypes = null;
+    let bestTypeCount = 0;
+    let bestDate = '';
+
+    for (const v of versions) {
+      try {
+        const vResp = await fetch(
+          'https://graph.microsoft.com/v1.0/me/drive/items/' + fileId + '/versions/' + v.id + '/content',
+          { headers: { 'Authorization': 'Bearer ' + token } }
+        );
+        if (!vResp.ok) continue;
+        const data = await vResp.json();
+        const types = data.settings && data.settings.company_types ? data.settings.company_types : {};
+        const typeCount = Object.keys(types).length;
+
+        console.log('Auto-recovery: version ' + v.id + ' from ' + v.lastModifiedDateTime + ' — ' + typeCount + ' company types');
+
+        if (typeCount > bestTypeCount) {
+          bestTypeCount = typeCount;
+          bestTypes = types;
+          bestDate = v.lastModifiedDateTime;
+        }
+        // If we found a version with many types, no need to check older ones
+        if (bestTypeCount >= 20) break;
+      } catch(vErr) {
+        console.warn('Auto-recovery: failed to read version ' + v.id, vErr);
+      }
+    }
+
+    if (bestTypes && bestTypeCount > localTypeCount) {
+      console.log('Auto-recovery: BEST version from ' + bestDate + ' with ' + bestTypeCount + ' company types (local had ' + localTypeCount + ')');
+      Object.assign(companyTypes, bestTypes);
+      saveCompanyTypes();
+      updateTypeCounts();
+      renderTable();
+      updateStats();
+      setSyncBadge('success', 'Recovered ' + bestTypeCount + ' client categories');
+      alert('Recovered ' + bestTypeCount + ' client categorizations from OneDrive backup (version from ' + new Date(bestDate).toLocaleDateString() + ')');
+      console.log('Auto-recovery: SUCCESS — restored ' + Object.keys(companyTypes).length + ' company types');
+    } else {
+      console.log('Auto-recovery: no version with more company types found');
+    }
+  } catch(e) {
+    console.warn('Auto-recovery: company type recovery error:', e);
   }
 }
 
