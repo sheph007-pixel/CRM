@@ -2624,6 +2624,7 @@ async function supabaseEnsureUser(microsoftId, email, displayName) {
       .single();
     if (error) { console.warn('Supabase: user upsert failed:', error.message); return null; }
     supabaseUserId = data.id;
+    try { localStorage.setItem('kennion_sb_uid', supabaseUserId); } catch(e) {}
     console.log('Supabase: user ready, id=' + supabaseUserId);
     return supabaseUserId;
   } catch(e) {
@@ -4198,7 +4199,7 @@ function showWelcome() {
   aiChatOpen = false;
 }
 
-async function onSignedIn(cacheRendered) {
+async function onSignedIn(cacheRendered, earlySupabasePromise) {
   document.getElementById('authLoading').style.display = 'none';
   document.getElementById('welcomeScreen').style.display = 'none';
   document.getElementById('crmContent').classList.add('active');
@@ -4228,16 +4229,17 @@ async function onSignedIn(cacheRendered) {
     updateLastSyncDisplay();
   }
 
-  // ── SUPABASE — register user + load fresh data in background ──
+  // ── SUPABASE — register user + load fresh data ──
   if (!supabaseReady) await initSupabase();
-  // Background Supabase sync — fetches latest data without blocking the UI
+  // Background Supabase sync — uses early-loaded data if available
   const supabaseSync = async () => {
     if (!supabaseReady) return;
     try {
       const msId = currentAccount.homeAccountId || currentAccount.localAccountId || currentAccount.username;
       await supabaseEnsureUser(msId, userEmail, currentAccount.name || userEmail);
       if (!supabaseUserId) return;
-      const sbData = await loadFromSupabase();
+      // Use data already loaded in parallel during MSAL init, or fetch fresh
+      const sbData = earlySupabasePromise ? await earlySupabasePromise : await loadFromSupabase();
       if (sbData && sbData.domainMap && Object.keys(sbData.domainMap).length > 0) {
         if (sbData.scanMeta) {
           lastScanTime = sbData.scanMeta.lastScanTime;
@@ -9757,13 +9759,7 @@ function esc(text) {
   loadLogoFailedCache();
   renderTableHeader();
 
-  // Initialize Supabase client early (waits for async-loaded library)
-  // Don't await here — let it load in background while we render cache
-  initSupabase();
-
   // ── INSTANT RENDER: load from localStorage cache BEFORE any network calls ──
-  // The early inline script already showed the snapshot HTML.
-  // Now we load the actual domainMap so the data model is correct.
   let cacheRendered = !!window.__snapshotRendered;
   const cached = loadLocalCache();
   if (cached && cached.domainMap && Object.keys(cached.domainMap).length > 0) {
@@ -9773,18 +9769,31 @@ function esc(text) {
     buildCompaniesFromDomainMap();
     renderTable();
     updateStats();
-    // Show the CRM UI immediately with cached data
     document.getElementById('authLoading').style.display = 'none';
     document.getElementById('welcomeScreen').style.display = 'none';
     document.getElementById('crmContent').classList.add('active');
+    document.getElementById('sidebar').style.display = 'flex';
     cacheRendered = true;
     console.log('INIT: rendered ' + companies.length + ' companies from cache in ' + (Date.now() - pageStart) + 'ms');
-  } else if (cacheRendered) {
-    // Snapshot was shown but no domainMap cache — snapshot is stale, hide it
-    console.log('INIT: snapshot was shown but no cache data — will wait for Supabase');
   }
 
-  // Safety timeout — if MSAL loading takes too long, show welcome screen
+  // ── START SUPABASE LOAD IMMEDIATELY using cached userId (don't wait for MSAL) ──
+  const cachedUid = localStorage.getItem('kennion_sb_uid');
+  let earlySupabasePromise = null;
+  if (cachedUid) {
+    // Start Supabase init + data load right away, in parallel with MSAL
+    earlySupabasePromise = (async () => {
+      await initSupabase();
+      if (!supabaseReady) return null;
+      supabaseUserId = cachedUid;
+      const sbData = await loadFromSupabase();
+      return sbData;
+    })();
+  } else {
+    initSupabase(); // just start loading the library
+  }
+
+  // ── MSAL AUTH (runs in parallel with Supabase load above) ──
   let welcomed = false;
   const safetyTimer = setTimeout(() => {
     if (!welcomed) {
@@ -9805,7 +9814,7 @@ function esc(text) {
           userEmail = currentAccount.username;
           clearTimeout(safetyTimer);
           welcomed = true;
-          await onSignedIn(cacheRendered);
+          await onSignedIn(cacheRendered, earlySupabasePromise);
           return;
         }
       }
