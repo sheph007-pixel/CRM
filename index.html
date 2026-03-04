@@ -1272,6 +1272,34 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
           <div style="font-size:11px;color:var(--text2);margin-top:8px;line-height:1.5">Limits reset on a rolling window. Leave blank to disable throttling.</div>
         </div>
 
+        <!-- CLOUD BACKUP & RECOVERY -->
+        <div class="settings-card">
+          <div class="settings-card-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/></svg>
+            <h3>Cloud Backup & Recovery</h3>
+          </div>
+          <p class="settings-desc">Your data syncs automatically to OneDrive. Use these tools to restore from a previous point in time or manage backups.</p>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+            <button class="btn btn-primary btn-sm" onclick="manualCloudSave()" id="settingsCloudSaveBtn">Save to Cloud Now</button>
+            <button class="btn btn-ghost btn-sm" onclick="manualCloudRestore()">Restore from Cloud</button>
+            <button class="btn btn-ghost btn-sm" onclick="showCloudVersionHistory()">Version History</button>
+            <button class="btn btn-ghost btn-sm" onclick="autoRecoverCompanyTypes(true)">Recover Client Categories</button>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
+            <button class="btn btn-ghost btn-sm" onclick="exportBackup()" style="font-size:11px">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export Backup
+            </button>
+            <label class="btn btn-ghost btn-sm" style="font-size:11px;cursor:pointer">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Import Backup
+              <input type="file" accept=".json" onchange="importBackup(event)" style="display:none">
+            </label>
+          </div>
+          <div id="settingsCloudSyncStatus" style="margin-top:10px;font-size:12px;color:var(--text2);min-height:18px"></div>
+          <div id="settingsCloudVersionList" style="display:none;margin-top:10px;max-height:300px;overflow-y:auto"></div>
+        </div>
+
       </div>
     </div>
 
@@ -8304,11 +8332,26 @@ async function showCloudVersionHistory() {
           const data = await vResp.json();
           const bl = data.settings && data.settings.blocked_domains ? data.settings.blocked_domains.length : 0;
           const domains = data.domainData ? Object.keys(data.domainData).length : 0;
+          const types = data.settings && data.settings.company_types ? Object.keys(data.settings.company_types).length : 0;
+          var currentCount = 0; var oldCount = 0;
+          if (data.settings && data.settings.company_types) {
+            for (var tk of Object.values(data.settings.company_types)) {
+              if (tk === 'Current Client') currentCount++;
+              else if (tk === 'Old Client') oldCount++;
+            }
+          }
           const ratio = domains > 0 ? bl / domains : 0;
           const detailEl = rowEl.querySelector('.ver-detail');
-          detailEl.textContent = bl + ' blocked / ' + domains + ' domains';
-          // Highlight: green = healthy, red = all blocked (corruption), grey = empty
-          if (bl === 0) {
+          var detailParts = [bl + ' blocked', domains + ' domains'];
+          if (types > 0) detailParts.push(types + ' categorized (' + currentCount + ' current, ' + oldCount + ' old)');
+          detailEl.textContent = detailParts.join(' · ');
+          // Highlight: green = has categorized companies, blue = healthy, red = corrupted, grey = empty
+          if (types >= 10) {
+            detailEl.style.color = 'var(--green)';
+            detailEl.textContent += ' ★';
+            rowEl.style.background = 'rgba(76,175,80,0.1)';
+            rowEl.style.borderLeft = '3px solid var(--green)';
+          } else if (bl === 0 && types === 0) {
             detailEl.style.color = 'var(--text2)';
             rowEl.style.opacity = '0.5';
           } else if (ratio >= 0.9) {
@@ -8317,10 +8360,8 @@ async function showCloudVersionHistory() {
             rowEl.style.background = 'rgba(244,67,54,0.05)';
             rowEl.style.borderLeft = '3px solid var(--red)';
           } else {
-            detailEl.style.color = 'var(--green)';
-            detailEl.textContent += ' ✓';
-            rowEl.style.background = 'rgba(76,175,80,0.1)';
-            rowEl.style.borderLeft = '3px solid var(--green)';
+            detailEl.style.color = '#1a73e8';
+            rowEl.style.borderLeft = '3px solid #1a73e8';
           }
         } catch(e) {
           rowEl.querySelector('.ver-detail').textContent = '(error)';
@@ -8385,13 +8426,14 @@ async function restoreCloudVersion(fileId, versionId, dateLabel) {
 }
 
 // Automatically recover company types from OneDrive version history.
-// If the current companyTypes is empty/small but a cloud version had many types,
-// restore from that version. This prevents losing categorization work across devices.
-async function autoRecoverCompanyTypes() {
+// Finds the version with the most company types and does a FULL restore
+// of all settings (types, starred, flagged, proposals, etc.) from that version.
+// This prevents losing categorization work across devices/browsers.
+async function autoRecoverCompanyTypes(forceCheck) {
   var localTypeCount = Object.keys(companyTypes).length;
-  if (localTypeCount >= 10) return; // already have enough types, no recovery needed
-  if (!currentAccount) return;
-  console.log('Auto-recovery: only ' + localTypeCount + ' company types locally — checking OneDrive version history...');
+  if (!forceCheck && localTypeCount >= 10) return; // already have enough types, no recovery needed
+  if (!currentAccount) { alert('Sign in first to recover from cloud.'); return; }
+  console.log('Auto-recovery: ' + localTypeCount + ' company types locally — scanning OneDrive version history for best backup...');
   try {
     const token = await getCloudToken();
     if (!token) { console.warn('Auto-recovery: no token for type recovery'); return; }
@@ -8413,7 +8455,7 @@ async function autoRecoverCompanyTypes() {
 
     console.log('Auto-recovery: checking ' + versions.length + ' cloud versions for company types');
 
-    let bestTypes = null;
+    let bestData = null;
     let bestTypeCount = 0;
     let bestDate = '';
 
@@ -8427,31 +8469,42 @@ async function autoRecoverCompanyTypes() {
         const data = await vResp.json();
         const types = data.settings && data.settings.company_types ? data.settings.company_types : {};
         const typeCount = Object.keys(types).length;
+        const domainCount = data.domainData ? Object.keys(data.domainData).length : 0;
 
-        console.log('Auto-recovery: version ' + v.id + ' from ' + v.lastModifiedDateTime + ' — ' + typeCount + ' company types');
+        console.log('Auto-recovery: version ' + v.id + ' from ' + v.lastModifiedDateTime + ' — ' + typeCount + ' company types, ' + domainCount + ' domains');
 
         if (typeCount > bestTypeCount) {
           bestTypeCount = typeCount;
-          bestTypes = types;
+          bestData = data;
           bestDate = v.lastModifiedDateTime;
         }
-        // If we found a version with many types, no need to check older ones
+        // If we found a version with many types, use it
         if (bestTypeCount >= 20) break;
       } catch(vErr) {
         console.warn('Auto-recovery: failed to read version ' + v.id, vErr);
       }
     }
 
-    if (bestTypes && bestTypeCount > localTypeCount) {
+    if (bestData && bestTypeCount > localTypeCount) {
       console.log('Auto-recovery: BEST version from ' + bestDate + ' with ' + bestTypeCount + ' company types (local had ' + localTypeCount + ')');
-      Object.assign(companyTypes, bestTypes);
-      saveCompanyTypes();
-      updateTypeCounts();
+      // Full restore — settings AND domain data from the best version
+      applyCloudSettings(bestData);
+      if (bestData.domainData && Object.keys(bestData.domainData).length > 0) {
+        applyCloudDomainData(bestData);
+      }
+      buildCompaniesFromDomainMap();
+      renderTableHeader();
       renderTable();
       updateStats();
+      updateBlockedCount();
+      updateFlaggedCount();
+      persistData();
+      var dateLabel = new Date(bestDate).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
       setSyncBadge('success', 'Recovered ' + bestTypeCount + ' client categories');
-      alert('Recovered ' + bestTypeCount + ' client categorizations from OneDrive backup (version from ' + new Date(bestDate).toLocaleDateString() + ')');
-      console.log('Auto-recovery: SUCCESS — restored ' + Object.keys(companyTypes).length + ' company types');
+      alert('Restored ' + bestTypeCount + ' client categorizations from OneDrive backup (' + dateLabel + ').\n\nAll your settings (categories, starred, flagged, proposals, etc.) have been recovered.');
+      console.log('Auto-recovery: SUCCESS — full restore from ' + bestDate + ' with ' + Object.keys(companyTypes).length + ' company types');
+      // Save restored state back to cloud so it sticks
+      scheduleCloudSync();
     } else {
       console.log('Auto-recovery: no version with more company types found');
     }
