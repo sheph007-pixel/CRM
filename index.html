@@ -2886,19 +2886,9 @@ async function loadFromSupabase() {
             case 'client_id': if (val) localStorage.setItem('relateflow_client_id', val); break;
             case 'contact_name_overrides': if (val) Object.assign(contactNameOverrides, val); break;
             case 'company_name_cache': if (val) Object.assign(companyNameCache, val); break;
-            case 'blocked_domains': if (val && val.length > 0) val.forEach(d => blockedDomains.add(d)); break;
-            case 'starred_contacts': if (val) Object.assign(starredContacts, val); break;
-            case 'starred_companies': if (val && val.length > 0) val.forEach(d => starredCompanies.add(d)); break;
-            case 'proposal_notes': if (val) Object.assign(proposalNotes, val); break;
-            case 'proposal_stages': if (val) Object.assign(proposalStages, val); break;
-            case 'followup_companies': if (val && val.length > 0) val.forEach(d => followUpCompanies.add(d)); break;
-            case 'followup_dates': if (val) Object.assign(followUpDates, val); break;
-            case 'archived_companies': if (val && val.length > 0) val.forEach(d => archivedCompanies.add(d)); break;
-            case 'flagged_companies': if (val && val.length > 0) val.forEach(d => flaggedCompanies.add(d)); break;
-            case 'merged_domains': if (val) Object.assign(mergedDomains, val); break;
-            case 'custom_column_data': if (val) Object.assign(customColumnData, val); break;
-            case 'enrichment_cache': if (val) Object.assign(enrichmentCache, val); break;
-            case 'contact_enrichment': if (val) Object.assign(contactEnrichment, val); break;
+            // Note: blocked_domains, starred/archived/flagged/followup companies, proposal data,
+            // merged_domains, enrichment, custom_data, starred_contacts are already loaded from
+            // the companies table rows above — user_settings copies are kept as backup only
           }
         } catch(e) { console.warn('Supabase: setting parse error for ' + s.key + ':', e); }
       }
@@ -4017,6 +4007,24 @@ async function onSignedIn() {
 
   if (supabaseReady && supabaseUserId) {
     try {
+      // Clear all state loaded from localStorage so Supabase is truly the source of truth
+      Object.keys(companyTypes).forEach(k => delete companyTypes[k]);
+      starredCompanies.clear();
+      archivedCompanies.clear();
+      flaggedCompanies.clear();
+      blockedDomains.clear();
+      followUpCompanies.clear();
+      Object.keys(followUpDates).forEach(k => delete followUpDates[k]);
+      Object.keys(proposalNotes).forEach(k => delete proposalNotes[k]);
+      Object.keys(proposalStages).forEach(k => delete proposalStages[k]);
+      Object.keys(mergedDomains).forEach(k => delete mergedDomains[k]);
+      Object.keys(starredContacts).forEach(k => delete starredContacts[k]);
+      Object.keys(customColumnData).forEach(k => delete customColumnData[k]);
+      Object.keys(companyNameCache).forEach(k => delete companyNameCache[k]);
+      Object.keys(enrichmentCache).forEach(k => delete enrichmentCache[k]);
+      Object.keys(contactEnrichment).forEach(k => delete contactEnrichment[k]);
+      Object.keys(contactNameOverrides).forEach(k => delete contactNameOverrides[k]);
+
       const sbData = await loadFromSupabase();
       if (sbData && sbData.domainMap && Object.keys(sbData.domainMap).length > 0) {
         domainMap = sbData.domainMap;
