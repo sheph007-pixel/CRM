@@ -4213,7 +4213,7 @@ function showWelcome() {
   aiChatOpen = false;
 }
 
-async function onSignedIn(cacheAlreadyRendered, supabasePromise) {
+async function onSignedIn(unused, supabasePromise) {
   document.getElementById('authLoading').style.display = 'none';
   document.getElementById('welcomeScreen').style.display = 'none';
   document.getElementById('crmContent').classList.add('active');
@@ -4233,109 +4233,44 @@ async function onSignedIn(cacheAlreadyRendered, supabasePromise) {
   document.getElementById('globalSearchWrap').style.display = '';
   document.getElementById('aiFab').classList.remove('hidden');
 
-  // If cache was pre-loaded in init(), render it NOW (after UI chrome is set up).
-  // This gives the user instant data with full sidebar/nav visible.
   let hasData = false;
-  if (cacheAlreadyRendered && Object.keys(domainMap).length > 0) {
-    buildCompaniesFromDomainMap();
-    renderTableHeader();
-    renderTable();
-    updateStats();
-    hasData = true;
-    console.log('onSignedIn: instant render from cache — ' + companies.length + ' companies');
-  }
   let cloudOnlyRestore = false;
   const startupTime = Date.now();
 
-  // ── SUPABASE — use pre-loaded data or fetch fresh ──
+  // ── SUPABASE: single authoritative load ──
+  // Supabase was already started in parallel with MSAL, so the promise
+  // is usually resolved (or nearly so) by the time we get here.
+  // We always await it — no stale cache rendering.
   if (!supabaseReady) await initSupabase();
-  const supabaseSync = async () => {
-    if (!supabaseReady) return;
-    try {
-      const msId = currentAccount.homeAccountId || currentAccount.localAccountId || currentAccount.username;
-      await supabaseEnsureUser(msId, userEmail, currentAccount.name || userEmail);
-      if (!supabaseUserId) return;
-      // Use data already loaded in parallel with MSAL, or fetch fresh
-      const sbData = supabasePromise ? await supabasePromise : await loadFromSupabase();
-      if (sbData && sbData.domainMap && Object.keys(sbData.domainMap).length > 0) {
-        if (sbData.scanMeta) {
-          lastScanTime = sbData.scanMeta.lastScanTime;
-          fullScanDone = sbData.scanMeta.fullScanDone || false;
-          deltaLink = sbData.scanMeta.deltaLink || null;
-        }
-        seenMsgIds = new Set();
-
-        if (hasData) {
-          // ── SMART MERGE: only update what actually changed ──
-          // Compare Supabase data with cached domainMap. Only re-render if different.
-          const sbDomains = Object.keys(sbData.domainMap);
-          const cachedDomains = Object.keys(domainMap);
-          let changed = sbDomains.length !== cachedDomains.length;
-
-          if (!changed) {
-            // Quick check: compare domain count, key flags, and counts
-            for (const domain of sbDomains) {
-              const sb = sbData.domainMap[domain];
-              const cached = domainMap[domain];
-              if (!cached) { changed = true; break; }
-              // Check if any visible fields differ
-              if ((sb._dbSentCount || 0) !== (cached._dbSentCount || 0) ||
-                  (sb._dbReceivedCount || 0) !== (cached._dbReceivedCount || 0) ||
-                  !!sb.is_starred !== !!cached.is_starred ||
-                  !!sb.is_flagged !== !!cached.is_flagged ||
-                  !!sb.is_archived !== !!cached.is_archived ||
-                  !!sb.is_blocked !== !!cached.is_blocked ||
-                  !!sb.is_followup !== !!cached.is_followup ||
-                  (sb.company_type || '') !== (cached.company_type || '') ||
-                  (sb.proposal_stage || '') !== (cached.proposal_stage || '') ||
-                  (sb.merged_into || '') !== (cached.merged_into || '') ||
-                  Object.keys(sb.contacts || {}).length !== Object.keys(cached.contacts || {}).length) {
-                changed = true; break;
-              }
-            }
-          }
-
-          // Always update domainMap with authoritative Supabase data
-          domainMap = sbData.domainMap;
-          saveLocalCache();
-
-          if (changed) {
-            console.log('Startup: Supabase data differs from cache — updating UI');
-            buildCompaniesFromDomainMap();
-            renderTableHeader();
-            renderTable();
-            updateStats();
-            updateLastSyncDisplay();
-            resolveCompanyNames();
-          } else {
-            console.log('Startup: Supabase data matches cache — no re-render needed');
-          }
-        } else {
-          // No cache — full render
-          domainMap = sbData.domainMap;
-          hasData = true;
-          buildCompaniesFromDomainMap();
-          renderTableHeader();
-          renderTable();
-          updateStats();
-          updateLastSyncDisplay();
-          saveLocalCache();
-          resolveCompanyNames();
-        }
-        updateSupabaseBadge('success');
-        console.log('Startup: Supabase sync done — ' + Object.keys(domainMap).length + ' domains in ' + (Date.now() - startupTime) + 'ms');
+  try {
+    if (!supabaseReady) throw new Error('Supabase not ready');
+    const msId = currentAccount.homeAccountId || currentAccount.localAccountId || currentAccount.username;
+    await supabaseEnsureUser(msId, userEmail, currentAccount.name || userEmail);
+    if (!supabaseUserId) throw new Error('No user ID');
+    // Use data already loaded in parallel with MSAL, or fetch fresh
+    const sbData = supabasePromise ? await supabasePromise : await loadFromSupabase();
+    if (sbData && sbData.domainMap && Object.keys(sbData.domainMap).length > 0) {
+      if (sbData.scanMeta) {
+        lastScanTime = sbData.scanMeta.lastScanTime;
+        fullScanDone = sbData.scanMeta.fullScanDone || false;
+        deltaLink = sbData.scanMeta.deltaLink || null;
       }
-    } catch(e) {
-      console.warn('Startup: Supabase sync failed:', e);
+      seenMsgIds = new Set();
+      domainMap = sbData.domainMap;
+      hasData = true;
+      // Single render — correct data, full UI chrome already visible
+      buildCompaniesFromDomainMap();
+      renderTableHeader();
+      renderTable();
+      updateStats();
+      updateLastSyncDisplay();
+      saveLocalCache();
+      resolveCompanyNames();
+      updateSupabaseBadge('success');
+      console.log('Startup: Supabase loaded — ' + Object.keys(domainMap).length + ' domains, ' + companies.length + ' companies in ' + (Date.now() - startupTime) + 'ms');
     }
-  };
-
-  if (hasData) {
-    // Data already visible from cache — sync Supabase quietly in background
-    supabaseSync();
-  } else {
-    // No cache — must wait for Supabase
-    await supabaseSync();
+  } catch(e) {
+    console.warn('Startup: Supabase load failed:', e);
   }
 
   updateBlockedCount();
@@ -9762,19 +9697,11 @@ function esc(text) {
   loadLogoFailedCache();
   renderTableHeader();
 
-  // ── PRE-LOAD cache into memory (but do NOT render yet) ──
-  // Rendering before onSignedIn() would show data without sidebar/nav/user pill.
-  // Instead, populate domainMap now so onSignedIn() can render instantly after
-  // setting up the full UI chrome (sidebar, nav, etc.)
-  let cacheLoaded = false;
-  const localData = loadLocalCache();
-  if (localData && localData.domainMap && Object.keys(localData.domainMap).length > 0) {
-    domainMap = localData.domainMap;
-    if (localData.fullScanDone) fullScanDone = localData.fullScanDone;
-    if (localData.lastScanTime) lastScanTime = localData.lastScanTime;
-    cacheLoaded = true;
-    console.log('Init: cache loaded into memory — ' + Object.keys(domainMap).length + ' domains in ' + (Date.now() - pageStart) + 'ms');
-  }
+  // ── NO CACHE RENDER — Supabase loads in parallel with MSAL ──
+  // Previous approach rendered stale localStorage cache, causing a flash of
+  // wrong data (e.g. 1,971 companies) before Supabase loaded the real data
+  // (11,931 companies). Since Supabase already starts loading in parallel
+  // with MSAL auth, just wait for Supabase and render once with correct data.
 
   // ── START SUPABASE LOAD IN PARALLEL WITH MSAL ──
   const cachedUid = localStorage.getItem('kennion_sb_uid');
@@ -9804,7 +9731,7 @@ function esc(text) {
           userEmail = currentAccount.username;
           clearTimeout(safetyTimer);
           welcomed = true;
-          await onSignedIn(cacheLoaded, supabasePromise);
+          await onSignedIn(false, supabasePromise);
           return;
         }
       }
