@@ -1195,7 +1195,7 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
           </div>
           <div id="blockedSyncStatus" style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(52,168,83,.08);border:1px solid rgba(52,168,83,.15);border-radius:6px;margin-bottom:10px;font-size:11px;color:#34a853">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#34a853" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/><polyline points="15 13 12 16 9 13"/></svg>
-            <span id="blockedSyncText">Backed up to cloud</span>
+            <span id="blockedSyncText">Backed up to Supabase</span>
           </div>
           <p class="settings-desc">Domains and emails here will never appear in your CRM. Add multiple — one per line, or comma/space separated.</p>
           <div style="display:flex;gap:8px">
@@ -1233,7 +1233,7 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
               <button class="btn btn-primary btn-sm" onclick="saveOpenAIKey()">Save</button>
               <button class="btn btn-ghost btn-sm" onclick="removeOpenAIKey()" style="color:var(--text2);padding:6px 8px" title="Remove key">&times;</button>
             </div>
-            <div style="font-size:11px;color:var(--text2);margin-top:8px;line-height:1.5">Your API key is synced securely via OneDrive so it works across all your devices.</div>
+            <div style="font-size:11px;color:var(--text2);margin-top:8px;line-height:1.5">Your API key is synced securely to Supabase so it works across all your devices.</div>
           </div>
 
           <!-- AI capabilities summary -->
@@ -2954,389 +2954,14 @@ function updateSupabaseBadge(status) {
 }
 
 // ──────────────────────────────────────────────
-// ONEDRIVE CLOUD SYNC
-// Persists all user settings & contacts to OneDrive app folder
-// so data roams across devices automatically.
+// CLOUD SYNC (legacy stubs — OneDrive removed, Supabase is source of truth)
 // ──────────────────────────────────────────────
-let cloudSyncInProgress = false;
-let cloudSyncTimer = null;
-let lastCloudSaveTime = 0;
-const CLOUD_SYNC_FILE = 'kennion-crm-sync.json';
+function setSyncBadge() {} // no-op
+function updateBlockedSyncStatus() {} // no-op
+function gatherSyncPayload() { return {}; } // kept for export backup
 
-async function getCloudToken() {
-  if (!msalInstance || !currentAccount) {
-    console.warn('Cloud sync: no MSAL instance or account — cannot get token');
-    return null;
-  }
-  try {
-    const resp = await msalInstance.acquireTokenSilent({
-      scopes: ['Files.ReadWrite.AppFolder'],
-      account: currentAccount
-    });
-    return resp.accessToken;
-  } catch(e) {
-    console.warn('Cloud sync: silent token failed, trying popup...', e.errorCode || e.message);
-    try {
-      const resp = await msalInstance.acquireTokenPopup({
-        scopes: ['Files.ReadWrite.AppFolder']
-      });
-      currentAccount = resp.account;
-      return resp.accessToken;
-    } catch(e2) {
-      console.warn('Cloud sync: popup token also failed — cloud sync unavailable:', e2.errorCode || e2.message);
-      return null;
-    }
-  }
-}
-
-function gatherSyncPayload() {
-  // Collect all localStorage settings
-  const settings = {
-    blocked_domains: [...blockedDomains],
-    starred_contacts: starredContacts,
-    starred_companies: [...starredCompanies],
-    archived_companies: [...archivedCompanies],
-    flagged_companies: [...flaggedCompanies],
-    company_types: companyTypes,
-    column_config: columnConfig,
-    custom_column_data: customColumnData,
-    company_names: companyNameCache,
-    contact_names: contactNameOverrides,
-    client_id: getClientId(),
-    email_signature: getEmailSignature(),
-    openai_key: getOpenAIKey(),
-    email_throttle: getThrottleSettings(),
-    proposal_notes: proposalNotes,
-    proposal_stages: proposalStages,
-    followup_companies: [...followUpCompanies],
-    followup_dates: followUpDates,
-  };
-
-  // Collect domain data — COMPACT format for cloud.
-  // Store counts + dates only (NOT full message ID arrays).
-  // Full message IDs stay in local IndexedDB only (for dedup during scan).
-  // This keeps the cloud payload small and fast to upload.
-  const domains = {};
-  for (const [domain, data] of Object.entries(domainMap)) {
-    const contacts = {};
-    for (const [email, c] of Object.entries(data.contacts)) {
-      contacts[email] = {
-        name: c.name, email: c.email,
-        sent: c.sentIds ? c.sentIds.size : 0,
-        received: c.receivedIds ? c.receivedIds.size : 0,
-        lastDate: c.lastDate ? c.lastDate.toISOString() : null,
-      };
-    }
-    domains[domain] = {
-      contacts: contacts,
-      sent: data.sentIds ? data.sentIds.size : 0,
-      received: data.receivedIds ? data.receivedIds.size : 0,
-      lastDate: data.lastDate ? data.lastDate.toISOString() : null,
-      lastSentDate: data.lastSentDate ? data.lastSentDate.toISOString() : null,
-      lastReceivedDate: data.lastReceivedDate ? data.lastReceivedDate.toISOString() : null,
-    };
-  }
-
-  return {
-    version: 3,
-    syncedAt: new Date().toISOString(),
-    userEmail: userEmail,
-    settings: settings,
-    domainData: domains,
-    meta: {
-      lastScanTime: lastScanTime ? lastScanTime.toISOString() : null,
-      fullScanDone: fullScanDone,
-      // seenMsgIds omitted — too large for cloud, stays in local IndexedDB only
-      deltaLink: deltaLink,
-    }
-  };
-}
-
-async function saveToCloud() {
-  if (cloudSyncInProgress) return;
-  if (!currentAccount) return;
-
-  // Safety guard: don't overwrite cloud if we have suspiciously few companies
-  // This prevents a corrupted local state from destroying the cloud backup
-  var currentCompanyCount = companies.length;
-  var currentDomainCount = Object.keys(domainMap).length;
-  if (currentDomainCount > 0 && currentCompanyCount <= 2 && currentDomainCount > 50) {
-    console.warn('Cloud save BLOCKED: only ' + currentCompanyCount + ' companies from ' + currentDomainCount + ' domains — likely corrupted state');
-    return;
-  }
-
-  // Safety guard: don't overwrite cloud if local company types dropped significantly
-  // This prevents losing categorization work when switching browsers/devices
-  var localTypeCount = Object.keys(companyTypes).length;
-  if (localTypeCount < 5 && currentDomainCount > 20) {
-    // Check if cloud has more types before overwriting
-    try {
-      var checkToken = await getCloudToken();
-      if (checkToken) {
-        var checkResp = await fetch(
-          'https://graph.microsoft.com/v1.0/me/drive/special/approot:/kennion_sync_v3.json:/content',
-          { headers: { 'Authorization': 'Bearer ' + checkToken } }
-        );
-        if (checkResp.ok) {
-          var checkData = await checkResp.json();
-          var cloudTypeCount = checkData.settings && checkData.settings.company_types ? Object.keys(checkData.settings.company_types).length : 0;
-          if (cloudTypeCount > localTypeCount + 10) {
-            console.warn('Cloud save BLOCKED: local has ' + localTypeCount + ' company types but cloud has ' + cloudTypeCount + ' — preserving cloud categorizations');
-            // Restore the cloud types locally instead of overwriting
-            Object.assign(companyTypes, checkData.settings.company_types);
-            saveCompanyTypes();
-            updateTypeCounts();
-            renderTable();
-            return;
-          }
-        }
-      }
-    } catch(guardErr) {
-      console.warn('Cloud save: type guard check failed (proceeding anyway):', guardErr);
-    }
-  }
-
-  cloudSyncInProgress = true;
-  setSyncBadge('scanning', 'Saving...');
-  const saveStart = Date.now();
-  try {
-    const token = await getCloudToken();
-    if (!token) { setSyncBadge('error', 'No token'); cloudSyncInProgress = false; return; }
-
-    const payload = gatherSyncPayload();
-    const body = JSON.stringify(payload);
-    const sizeKB = Math.round(body.length / 1024);
-    // Timeout scales with payload size: 30s base + 1s per 100KB
-    const timeoutMs = Math.max(30000, 30000 + Math.round(sizeKB / 100) * 1000);
-
-    console.log('Cloud save: uploading ' + sizeKB + ' KB (timeout: ' + (timeoutMs/1000) + 's)');
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-    const resp = await fetch(
-      'https://graph.microsoft.com/v1.0/me/drive/special/approot:/' + CLOUD_SYNC_FILE + ':/content',
-      { method: 'PUT', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: body, signal: controller.signal }
-    );
-    clearTimeout(timeout);
-
-    const elapsed = ((Date.now() - saveStart) / 1000).toFixed(1);
-    if (resp.ok) {
-      console.log('Cloud saved in ' + elapsed + 's (' + sizeKB + ' KB, ' + Object.keys(domainMap).length + ' domains)');
-      setSyncBadge('success', 'Saved (' + elapsed + 's)');
-      lastCloudSaveTime = Date.now();
-      updateBlockedSyncStatus();
-    } else {
-      console.warn('Cloud save failed:', resp.status, await resp.text());
-      setSyncBadge('error', 'Save failed');
-    }
-  } catch(e) {
-    if (e.name === 'AbortError') {
-      const elapsed = ((Date.now() - saveStart) / 1000).toFixed(0);
-      console.warn('Cloud save timed out after ' + elapsed + 's');
-      setSyncBadge('error', 'Slow connection — retrying...');
-      // Retry once after timeout
-      cloudSyncInProgress = false;
-      setTimeout(() => saveToCloud(), 3000);
-      return;
-    } else {
-      console.warn('Cloud save error:', e);
-      setSyncBadge('error', 'Save error');
-    }
-  } finally {
-    cloudSyncInProgress = false;
-  }
-}
-
-async function loadFromCloud() {
-  try {
-    const token = await getCloudToken();
-    if (!token) { console.warn('Cloud load: no token available'); return null; }
-    const resp = await fetch(
-      'https://graph.microsoft.com/v1.0/me/drive/special/approot:/' + CLOUD_SYNC_FILE + ':/content',
-      { headers: { 'Authorization': 'Bearer ' + token } }
-    );
-    if (resp.status === 404) { console.log('Cloud load: no cloud backup file found (first time)'); return null; }
-    if (!resp.ok) { console.warn('Cloud load failed: HTTP ' + resp.status + ' ' + (await resp.text())); return null; }
-    const data = await resp.json();
-    if (data.version && data.settings) {
-      console.log('Cloud load: found backup v' + data.version + ' from ' + (data.syncedAt || 'unknown') + ' with ' + Object.keys(data.domainData || {}).length + ' domains');
-      return data;
-    }
-    console.warn('Cloud load: backup file exists but has invalid format');
-    return null;
-  } catch(e) {
-    console.warn('Cloud load error:', e);
-    return null;
-  }
-}
-
-function applyCloudSettings(data) {
-  // Restore settings only (blocked domains, starred, archived, etc.)
-  const s = data.settings;
-  if (!s) return;
-  if (s.blocked_domains && s.blocked_domains.length > 0) {
-    for (const d of s.blocked_domains) blockedDomains.add(d);
-    saveBlockedDomains();
-    console.log('Cloud sync: restored ' + s.blocked_domains.length + ' blocked domains');
-  }
-  if (s.starred_contacts && Object.keys(s.starred_contacts).length > 0) {
-    Object.assign(starredContacts, s.starred_contacts);
-    saveStarredContacts();
-  }
-  if (s.starred_companies && s.starred_companies.length > 0) {
-    for (const c of s.starred_companies) starredCompanies.add(c);
-    saveStarredCompanies();
-  }
-  if (s.archived_companies && s.archived_companies.length > 0) {
-    for (const c of s.archived_companies) archivedCompanies.add(c);
-    saveArchivedCompanies();
-  }
-  if (s.flagged_companies && s.flagged_companies.length > 0) {
-    for (const c of s.flagged_companies) flaggedCompanies.add(c);
-    saveFlaggedCompanies();
-  }
-  if (s.company_types && Object.keys(s.company_types).length > 0) {
-    Object.assign(companyTypes, s.company_types);
-    saveCompanyTypes();
-  }
-  if (s.column_config && s.column_config.length > 0) {
-    columnConfig = s.column_config;
-    saveColumnConfig();
-  }
-  if (s.custom_column_data && Object.keys(s.custom_column_data).length > 0) {
-    // Merge: cloud values fill in missing keys
-    for (const [k, v] of Object.entries(s.custom_column_data)) {
-      if (!customColumnData[k]) customColumnData[k] = v;
-      else Object.assign(customColumnData[k], v);
-    }
-    saveCustomColumnData();
-  }
-  if (s.company_names && Object.keys(s.company_names).length > 0) {
-    Object.assign(companyNameCache, s.company_names);
-    companyNameCacheDirty = true;
-    saveCompanyNameCache();
-  }
-  if (s.contact_names && Object.keys(s.contact_names).length > 0) {
-    Object.assign(contactNameOverrides, s.contact_names);
-    contactNameDirty = true;
-    saveContactNameOverrides();
-  }
-  if (s.client_id) {
-    localStorage.setItem('relateflow_client_id', s.client_id);
-  }
-  if (s.email_signature && !getEmailSignature()) {
-    saveEmailSignature(s.email_signature);
-  }
-  if (s.openai_key && !getOpenAIKey()) {
-    localStorage.setItem('kennion_openai_key', s.openai_key);
-    loadAISettings();
-  }
-  if (s.email_throttle) {
-    var local = getThrottleSettings();
-    if (!local.perHour && !local.perDay) {
-      saveThrottleSettingsToStorage(s.email_throttle);
-    }
-  }
-  if (s.proposal_notes && Object.keys(s.proposal_notes).length > 0) {
-    for (var k in s.proposal_notes) { if (!proposalNotes[k]) proposalNotes[k] = s.proposal_notes[k]; }
-    saveProposalNotes();
-  }
-  if (s.proposal_stages && Object.keys(s.proposal_stages).length > 0) {
-    for (var k in s.proposal_stages) { if (!proposalStages[k]) proposalStages[k] = s.proposal_stages[k]; }
-    saveProposalStages();
-  }
-  if (s.followup_companies && s.followup_companies.length > 0) {
-    for (const c of s.followup_companies) followUpCompanies.add(c);
-    saveFollowUpCompanies();
-  }
-  if (s.followup_dates && Object.keys(s.followup_dates).length > 0) {
-    for (var k in s.followup_dates) { if (!followUpDates[k]) followUpDates[k] = s.followup_dates[k]; }
-    saveFollowUpDates();
-  }
-}
-
-function applyCloudDomainData(data) {
-  // Restore domain/contact data (merge with existing — only adds, never removes)
-  // Supports both v2 (full ID arrays) and v3 (compact: counts + dates only)
-  if (data.domainData && Object.keys(data.domainData).length > 0) {
-    for (const [domain, d] of Object.entries(data.domainData)) {
-      const key = domain.toLowerCase();
-      const isNew = !domainMap[key];
-      if (isNew) {
-        domainMap[key] = { contacts: {}, sentIds: new Set(), receivedIds: new Set(), lastDate: null, lastSentDate: null, lastReceivedDate: null };
-      }
-      const entry = domainMap[key];
-      // v2 format: merge full ID arrays
-      if (d.sentIds && d.sentIds.length > 0) { for (const id of d.sentIds) entry.sentIds.add(id); }
-      if (d.receivedIds && d.receivedIds.length > 0) { for (const id of d.receivedIds) entry.receivedIds.add(id); }
-      // v3 format: no ID arrays, only counts — generate synthetic placeholder IDs
-      // so buildCompaniesFromDomainMap() doesn't skip these domains (uniqueSent > 0 check)
-      if (!d.sentIds && d.sent > 0 && entry.sentIds.size === 0) {
-        for (var si = 0; si < d.sent; si++) entry.sentIds.add('cloud_' + key + '_s_' + si);
-      }
-      if (!d.receivedIds && d.received > 0 && entry.receivedIds.size === 0) {
-        for (var ri = 0; ri < d.received; ri++) entry.receivedIds.add('cloud_' + key + '_r_' + ri);
-      }
-      // Only set dates from cloud if this domain is NEW locally.
-      // If local already has data from a real scan, local dates are more accurate.
-      if (isNew) {
-        if (d.lastDate) entry.lastDate = new Date(d.lastDate);
-        if (d.lastSentDate) entry.lastSentDate = new Date(d.lastSentDate);
-        if (d.lastReceivedDate) entry.lastReceivedDate = new Date(d.lastReceivedDate);
-      }
-      // Merge contacts
-      for (const [email, c] of Object.entries(d.contacts || {})) {
-        const le = email.toLowerCase();
-        const isNewContact = !entry.contacts[le];
-        if (isNewContact) {
-          // v3 format: contacts have c.sent/c.received counts, not c.sentIds/c.receivedIds arrays
-          var cSentSet = new Set(c.sentIds || []);
-          var cRecvSet = new Set(c.receivedIds || []);
-          if (!c.sentIds && c.sent > 0) { for (var csi = 0; csi < c.sent; csi++) cSentSet.add('cloud_' + le + '_s_' + csi); }
-          if (!c.receivedIds && c.received > 0) { for (var cri = 0; cri < c.received; cri++) cRecvSet.add('cloud_' + le + '_r_' + cri); }
-          entry.contacts[le] = {
-            name: c.name, email: le,
-            sentIds: cSentSet,
-            receivedIds: cRecvSet,
-            lastDate: c.lastDate ? new Date(c.lastDate) : null
-          };
-        } else {
-          if (c.sentIds) { for (const id of c.sentIds) entry.contacts[le].sentIds.add(id); }
-          if (c.receivedIds) { for (const id of c.receivedIds) entry.contacts[le].receivedIds.add(id); }
-          // v3: if existing contact has empty sets, fill from counts
-          if (!c.sentIds && c.sent > 0 && entry.contacts[le].sentIds.size === 0) {
-            for (var ecsi = 0; ecsi < c.sent; ecsi++) entry.contacts[le].sentIds.add('cloud_' + le + '_s_' + ecsi);
-          }
-          if (!c.receivedIds && c.received > 0 && entry.contacts[le].receivedIds.size === 0) {
-            for (var ecri = 0; ecri < c.received; ecri++) entry.contacts[le].receivedIds.add('cloud_' + le + '_r_' + ecri);
-          }
-        }
-      }
-    }
-  }
-
-  // Restore meta
-  if (data.meta) {
-    if (data.meta.lastScanTime) {
-      const cloudScanTime = new Date(data.meta.lastScanTime);
-      if (!lastScanTime || cloudScanTime > lastScanTime) lastScanTime = cloudScanTime;
-    }
-    if (data.meta.fullScanDone) fullScanDone = data.meta.fullScanDone;
-    // v2: seenMsgIds may exist in cloud; v3: omitted (local only)
-    if (data.meta.seenMsgIds && data.meta.seenMsgIds.length > 0) {
-      for (const id of data.meta.seenMsgIds) seenMsgIds.add(id);
-    }
-    if (data.meta.deltaLink) deltaLink = data.meta.deltaLink;
-  }
-}
-
-// Debounced cloud save — triggers 2s after last change
+// scheduleCloudSync — now just triggers Supabase sync (OneDrive removed)
 function scheduleCloudSync() {
-  if (!currentAccount) return;
-  if (cloudSyncTimer) clearTimeout(cloudSyncTimer);
-  // 2-second debounce, then save. Badge updates when upload actually starts.
-  cloudSyncTimer = setTimeout(() => { saveToCloud(); }, 2000);
-  // Also sync to Supabase database (source of truth)
   scheduleSupabaseSync();
 }
 
@@ -3423,7 +3048,7 @@ async function signIn() {
 
   try {
     const resp = await msalInstance.loginPopup({
-      scopes: ['Mail.Read','Mail.Send','User.Read','Files.ReadWrite.AppFolder','MailboxSettings.Read'],
+      scopes: ['Mail.Read','Mail.Send','User.Read','MailboxSettings.Read'],
       prompt: 'select_account'
     });
     currentAccount = resp.account;
@@ -3435,7 +3060,7 @@ async function signIn() {
     // If popup blocked, try redirect
     if (e.errorCode === 'popup_window_error' || e.errorCode === 'empty_window_error') {
       alert('Popup was blocked by your browser. Trying redirect login instead...');
-      msalInstance.loginRedirect({ scopes: ['Mail.Read','Mail.Send','User.Read','Files.ReadWrite.AppFolder','MailboxSettings.Read'] });
+      msalInstance.loginRedirect({ scopes: ['Mail.Read','Mail.Send','User.Read','MailboxSettings.Read'] });
       return;
     }
     alert('Sign-in failed: ' + (e.errorCode || '') + ' — ' + (e.message || e));
@@ -3464,13 +3089,13 @@ async function getAccessToken() {
   if (!msalInstance || !currentAccount) throw new Error('Not signed in');
   try {
     const resp = await msalInstance.acquireTokenSilent({
-      scopes: ['Mail.Read','Mail.Send','User.Read','Files.ReadWrite.AppFolder','MailboxSettings.Read'],
+      scopes: ['Mail.Read','Mail.Send','User.Read','MailboxSettings.Read'],
       account: currentAccount
     });
     return resp.accessToken;
   } catch(e) {
     const resp = await msalInstance.acquireTokenPopup({
-      scopes: ['Mail.Read','Mail.Send','User.Read','Files.ReadWrite.AppFolder','MailboxSettings.Read']
+      scopes: ['Mail.Read','Mail.Send','User.Read','MailboxSettings.Read']
     });
     currentAccount = resp.account;
     return resp.accessToken;
@@ -4185,8 +3810,8 @@ async function scanOutlookEmails(forceFullScan) {
 
     lastScanTime = new Date();
     await persistData();
-    // Save to cloud immediately after scan (not debounced — this is a major data event)
-    saveToCloud();
+    // Sync to Supabase immediately after scan (major data event)
+    scheduleSupabaseSync();
     setSyncBadge('success', 'Saved');
     updateLastSyncDisplay();
     scheduleDomainScan(); // check domain validity after sync
@@ -4435,58 +4060,7 @@ async function onSignedIn() {
   }
   } // end if (!hasData) from Supabase check
 
-  // Step 2: Merge cloud data in background (adds-only, never removes)
-  // This ensures data from other browsers/devices gets merged in
-  setSyncBadge('scanning', 'Syncing...');
-  (async () => {
-    try {
-      const cloudData = await loadFromCloud();
-      if (cloudData) {
-        // Merge cloud settings (blocked, starred, archived, etc.)
-        applyCloudSettings(cloudData);
-        // Merge cloud domain data — only ADDS, never replaces or removes
-        const cloudDomainCount = cloudData.domainData ? Object.keys(cloudData.domainData).length : 0;
-        if (cloudDomainCount > 0) {
-          applyCloudDomainData(cloudData);
-        }
-        const totalDomains = Object.keys(domainMap).length;
-        if (totalDomains > 0 && !hasData) {
-          // First time on this browser — cloud had data, local didn't
-          // Force full rescan so real email IDs replace synthetic cloud placeholders
-          fullScanDone = false;
-          deltaLink = null;
-          seenMsgIds = new Set();
-          hasData = true;
-          cloudOnlyRestore = true;
-          buildCompaniesFromDomainMap();
-          renderTableHeader();
-          resolveCompanyNames();
-          runEnrichment();
-        } else if (hasData) {
-          // Merge happened — rebuild to reflect any new data from cloud
-          buildCompaniesFromDomainMap();
-        }
-        renderTable();
-        updateStats();
-        updateBlockedCount();
-        updateFlaggedCount();
-        updateLastSyncDisplay();
-        persistData(); // cache merged data locally
-        setSyncBadge('success', 'Synced');
-        console.log('Startup: cloud merge complete (' + Object.keys(domainMap).length + ' domains, ' + blockedDomains.size + ' blocked)');
-        // Auto-recover company types if they were lost (e.g., switching browsers)
-        autoRecoverCompanyTypes();
-      } else {
-        setSyncBadge('success', 'Up to date');
-        console.log('Startup: no cloud backup found');
-        // Even without cloud data, try to recover types from version history
-        autoRecoverCompanyTypes();
-      }
-    } catch(e) {
-      console.warn('Startup: cloud merge failed (data safe locally):', e);
-      setSyncBadge('error', 'Cloud unavailable');
-    }
-  })();
+  // OneDrive cloud merge removed — Supabase is now the source of truth
 
   updateBlockedCount();
   updateFlaggedCount();
@@ -5468,29 +5042,16 @@ function updateBlockedCount() {
 }
 
 function updateBlockedSyncStatus() {
-  const el = document.getElementById('blockedSyncText');
+  const el = document.getElementById("blockedSyncText");
   if (!el) return;
-  const statusEl = document.getElementById('blockedSyncStatus');
-  if (lastCloudSaveTime) {
-    const ago = Math.round((Date.now() - lastCloudSaveTime) / 1000);
-    let timeStr;
-    if (ago < 5) timeStr = 'just now';
-    else if (ago < 60) timeStr = ago + 's ago';
-    else if (ago < 3600) timeStr = Math.floor(ago / 60) + 'm ago';
-    else timeStr = Math.floor(ago / 3600) + 'h ago';
-    el.textContent = blockedDomains.size + ' domains backed up to cloud \u00b7 Last saved ' + timeStr;
-    statusEl.style.background = 'rgba(52,168,83,.08)';
-    statusEl.style.borderColor = 'rgba(52,168,83,.15)';
-    statusEl.style.color = '#34a853';
-  } else if (cloudSyncInProgress) {
-    el.textContent = 'Saving ' + blockedDomains.size + ' domains to cloud...';
-    statusEl.style.background = 'rgba(26,115,232,.08)';
-    statusEl.style.borderColor = 'rgba(26,115,232,.15)';
-    statusEl.style.color = '#5b9cf6';
-  } else {
-    el.textContent = blockedDomains.size + ' domains \u00b7 Syncing to cloud...';
-    statusEl.style.color = '#7a7a95';
+  const statusEl = document.getElementById("blockedSyncStatus");
+  el.textContent = blockedDomains.size + " domains backed up to Supabase";
+  if (statusEl) {
+    statusEl.style.background = "rgba(52,168,83,.08)";
+    statusEl.style.borderColor = "rgba(52,168,83,.15)";
+    statusEl.style.color = "#34a853";
   }
+}
 }
 
 function showBlockedView() {
@@ -8757,469 +8318,71 @@ function getCloudVersionListEl() {
   return document.getElementById('settingsCloudVersionList') || document.getElementById('cloudVersionList');
 }
 
-async function manualCloudSave() {
-  const status = getCloudStatusEl();
-  const btn = document.getElementById('settingsCloudSaveBtn') || document.getElementById('cloudSaveBtn');
-  if (!currentAccount) { if (status) status.textContent = 'Sign in first to sync.'; return; }
-  if (btn) btn.disabled = true;
-  if (status) { status.textContent = 'Saving to OneDrive...'; status.style.color = 'var(--text2)'; }
-  try {
-    await saveToCloud();
-    if (status) { status.textContent = 'Saved to OneDrive successfully!'; status.style.color = 'var(--green)'; }
-  } catch(e) {
-    if (status) { status.textContent = 'Save failed: ' + e.message; status.style.color = 'var(--red)'; }
-  }
-  if (btn) btn.disabled = false;
-}
+// Legacy OneDrive manual sync functions removed — Supabase is source of truth
+function manualCloudSave() {}
+function manualCloudRestore() {}
 
-async function manualCloudRestore() {
-  const status = getCloudStatusEl();
-  if (!currentAccount) { if (status) status.textContent = 'Sign in first to restore.'; return; }
-  if (!confirm('This will merge cloud data with your current local data. Continue?')) return;
-  if (status) { status.textContent = 'Restoring from OneDrive...'; status.style.color = 'var(--text2)'; }
-  try {
-    const data = await loadFromCloud();
-    if (!data) { if (status) { status.textContent = 'No cloud backup found.'; status.style.color = 'var(--orange)'; } return; }
-    applyCloudSettings(data);
-    applyCloudDomainData(data);
-    buildCompaniesFromDomainMap();
-    renderTableHeader();
-    renderTable();
-    updateStats();
-    updateBlockedCount();
-    updateFlaggedCount();
-    persistData();
-    renderBlockedDomainsList();
-    if (status) { status.textContent = 'Restored from cloud! (' + Object.keys(domainMap).length + ' domains, ' + blockedDomains.size + ' blocked)'; status.style.color = 'var(--green)'; }
-  } catch(e) {
-    if (status) { status.textContent = 'Restore failed: ' + e.message; status.style.color = 'var(--red)'; }
-  }
-}
+function showCloudVersionHistory() {} // OneDrive version history removed
 
-async function showCloudVersionHistory() {
-  const status = getCloudStatusEl();
-  const listEl = getCloudVersionListEl();
-  if (!currentAccount) { status.textContent = 'Sign in first.'; return; }
-  status.textContent = 'Loading version history from OneDrive...';
-  status.style.color = 'var(--text2)';
-  listEl.style.display = 'none';
-  try {
-    const token = await getCloudToken();
-    if (!token) { status.textContent = 'Could not get cloud token.'; status.style.color = 'var(--red)'; return; }
-
-    // First get the file item ID
-    const metaResp = await fetch(
-      'https://graph.microsoft.com/v1.0/me/drive/special/approot:/' + CLOUD_SYNC_FILE,
-      { headers: { 'Authorization': 'Bearer ' + token } }
-    );
-    if (metaResp.status === 404) {
-      status.textContent = 'No cloud backup file found — nothing to recover.';
-      status.style.color = 'var(--orange)';
-      return;
-    }
-    if (!metaResp.ok) { status.textContent = 'Failed to find backup file: HTTP ' + metaResp.status; status.style.color = 'var(--red)'; return; }
-    const fileMeta = await metaResp.json();
-    const fileId = fileMeta.id;
-    const fileSize = fileMeta.size;
-
-    // Get version history
-    const versResp = await fetch(
-      'https://graph.microsoft.com/v1.0/me/drive/items/' + fileId + '/versions',
-      { headers: { 'Authorization': 'Bearer ' + token } }
-    );
-    if (!versResp.ok) { status.textContent = 'Failed to load versions: HTTP ' + versResp.status; status.style.color = 'var(--red)'; return; }
-    const versData = await versResp.json();
-    const versions = versData.value || [];
-
-    if (versions.length === 0) {
-      status.textContent = 'No previous versions found.';
-      status.style.color = 'var(--orange)';
-      return;
-    }
-
-    // Show version list
-    status.textContent = 'Found ' + versions.length + ' version(s). Click one to preview and restore:';
-    status.style.color = 'var(--text2)';
-    listEl.innerHTML = '';
-    listEl.style.display = 'block';
-
-    status.textContent = 'Found ' + versions.length + ' version(s). Loading details...';
-
-    var versionRows = [];
-    for (const v of versions) {
-      const dt = new Date(v.lastModifiedDateTime);
-      const dateStr = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-      const sizeStr = v.size ? Math.round(v.size / 1024) + ' KB' : '';
-      const row = document.createElement('div');
-      row.style.cssText = 'padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;';
-      // Preview: download version to show full stats breakdown
-      row.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><div><strong>' + dateStr + '</strong><span style="color:var(--text2);margin-left:8px;font-size:12px">' + sizeStr + '</span></div><button class="btn btn-ghost btn-sm" style="font-size:11px" data-vid="' + v.id + '" data-fid="' + fileId + '">Restore this version</button></div><div class="ver-detail" style="color:var(--text2);font-size:11px;margin-top:5px">loading...</div>';
-      row.querySelector('button').addEventListener('click', async function(e) {
-        e.stopPropagation();
-        await restoreCloudVersion(fileId, v.id, dateStr);
-      });
-      listEl.appendChild(row);
-
-      versionRows.push({ row: row, ver: v });
-    }
-
-    // Load version details in batches of 3 to avoid rate-limiting
-    async function loadVersionDetail(rowEl, ver) {
-      try {
-        const vResp = await fetch(
-          'https://graph.microsoft.com/v1.0/me/drive/items/' + fileId + '/versions/' + ver.id + '/content',
-          { headers: { 'Authorization': 'Bearer ' + token } }
-        );
-        if (!vResp.ok) {
-          // Retry once after 429 rate limit
-          if (vResp.status === 429) {
-            var retryAfter = parseInt(vResp.headers.get('Retry-After') || '2', 10);
-            await new Promise(r => setTimeout(r, retryAfter * 1000));
-            const retry = await fetch(
-              'https://graph.microsoft.com/v1.0/me/drive/items/' + fileId + '/versions/' + ver.id + '/content',
-              { headers: { 'Authorization': 'Bearer ' + token } }
-            );
-            if (!retry.ok) { rowEl.querySelector('.ver-detail').textContent = '(failed)'; return; }
-            var data = await retry.json();
-          } else {
-            rowEl.querySelector('.ver-detail').textContent = '(failed)'; return;
-          }
-        } else {
-          var data = await vResp.json();
-        }
-        const bl = data.settings && data.settings.blocked_domains ? data.settings.blocked_domains.length : 0;
-        const domains = data.domainData ? Object.keys(data.domainData).length : 0;
-        const ratio = domains > 0 ? bl / domains : 0;
-        var typeCounts = {};
-        var totalCategorized = 0;
-        if (data.settings && data.settings.company_types) {
-          for (var tk of Object.values(data.settings.company_types)) {
-            typeCounts[tk] = (typeCounts[tk] || 0) + 1;
-            totalCategorized++;
-          }
-        }
-        const starred = data.settings && data.settings.starred_companies ? data.settings.starred_companies.length : 0;
-        const flagged = data.settings && data.settings.flagged_companies ? data.settings.flagged_companies.length : 0;
-        const detailEl = rowEl.querySelector('.ver-detail');
-        var badgeStyle = 'display:inline-block;padding:1px 7px;border-radius:3px;margin:2px 3px 2px 0;font-size:11px;';
-        var html = '<span style="' + badgeStyle + 'background:var(--bg2);color:var(--text1)">' + domains + ' Companies</span>';
-        if (typeCounts['Lead']) html += '<span style="' + badgeStyle + 'background:#e3f2fd;color:#1565c0">' + typeCounts['Lead'] + ' Leads</span>';
-        if (typeCounts['Current Client']) html += '<span style="' + badgeStyle + 'background:#e8f5e9;color:#2e7d32">' + typeCounts['Current Client'] + ' Current</span>';
-        if (typeCounts['Old Client']) html += '<span style="' + badgeStyle + 'background:#fff3e0;color:#e65100">' + typeCounts['Old Client'] + ' Old</span>';
-        for (var cat in typeCounts) {
-          if (cat !== 'Lead' && cat !== 'Current Client' && cat !== 'Old Client') {
-            html += '<span style="' + badgeStyle + 'background:#f3e5f5;color:#7b1fa2">' + typeCounts[cat] + ' ' + cat + '</span>';
-          }
-        }
-        if (bl > 0) html += '<span style="' + badgeStyle + 'background:#ffebee;color:#c62828">' + bl + ' Blocked</span>';
-        if (starred > 0) html += '<span style="' + badgeStyle + 'background:#fffde7;color:#f57f17">' + starred + ' Starred</span>';
-        if (flagged > 0) html += '<span style="' + badgeStyle + 'background:#fce4ec;color:#ad1457">' + flagged + ' Flagged</span>';
-        detailEl.innerHTML = html;
-        if (totalCategorized >= 10) {
-          rowEl.style.background = 'rgba(76,175,80,0.07)';
-          rowEl.style.borderLeft = '3px solid var(--green)';
-        } else if (bl === 0 && totalCategorized === 0) {
-          rowEl.style.opacity = '0.5';
-        } else if (ratio >= 0.9) {
-          detailEl.innerHTML += '<span style="color:var(--red);margin-left:4px;font-weight:600">(corrupted)</span>';
-          rowEl.style.background = 'rgba(244,67,54,0.05)';
-          rowEl.style.borderLeft = '3px solid var(--red)';
-        } else {
-          rowEl.style.borderLeft = '3px solid #1a73e8';
-        }
-      } catch(e) {
-        rowEl.querySelector('.ver-detail').textContent = '(error)';
-      }
-    }
-
-    // Process in batches of 3 concurrent requests
-    var BATCH_SIZE = 3;
-    for (var bi = 0; bi < versionRows.length; bi += BATCH_SIZE) {
-      var batch = versionRows.slice(bi, bi + BATCH_SIZE);
-      await Promise.all(batch.map(function(item) { return loadVersionDetail(item.row, item.ver); }));
-      status.textContent = 'Loading details... ' + Math.min(bi + BATCH_SIZE, versionRows.length) + '/' + versionRows.length;
-    }
-
-    status.textContent = 'Found ' + versions.length + ' version(s). Green = healthy, Red = corrupted. Click to restore:';
-  } catch(e) {
-    status.textContent = 'Error loading versions: ' + e.message;
-    status.style.color = 'var(--red)';
-  }
-}
-
-async function restoreCloudVersion(fileId, versionId, dateLabel) {
-  const status = getCloudStatusEl();
-  if (!confirm('Restore cloud backup from ' + dateLabel + '? This will merge that version\'s data (blocked domains, settings, contacts) into your current data.')) return;
-  status.textContent = 'Downloading version from ' + dateLabel + '...';
-  status.style.color = 'var(--text2)';
-  try {
-    const token = await getCloudToken();
-    if (!token) { status.textContent = 'Could not get cloud token.'; status.style.color = 'var(--red)'; return; }
-
-    const resp = await fetch(
-      'https://graph.microsoft.com/v1.0/me/drive/items/' + fileId + '/versions/' + versionId + '/content',
-      { headers: { 'Authorization': 'Bearer ' + token } }
-    );
-    if (!resp.ok) { status.textContent = 'Download failed: HTTP ' + resp.status; status.style.color = 'var(--red)'; return; }
-    const data = await resp.json();
-    if (!data.version || !data.settings) { status.textContent = 'Invalid backup format in this version.'; status.style.color = 'var(--red)'; return; }
-
-    const blockedBefore = blockedDomains.size;
-    const domainsBefore = Object.keys(domainMap).length;
-
-    // Clear existing data so restore REPLACES instead of just merging.
-    // The apply* functions only add/merge — without clearing first,
-    // restoring an older version would have no visible effect.
-    blockedDomains.clear();
-    starredCompanies.clear();
-    archivedCompanies.clear();
-    flaggedCompanies.clear();
-    followUpCompanies.clear();
-    Object.keys(companyTypes).forEach(k => delete companyTypes[k]);
-    Object.keys(starredContacts).forEach(k => delete starredContacts[k]);
-    Object.keys(proposalNotes).forEach(k => delete proposalNotes[k]);
-    Object.keys(proposalStages).forEach(k => delete proposalStages[k]);
-    Object.keys(followUpDates).forEach(k => delete followUpDates[k]);
-    Object.keys(companyNameCache).forEach(k => delete companyNameCache[k]);
-    Object.keys(contactNameOverrides).forEach(k => delete contactNameOverrides[k]);
-    Object.keys(customColumnData).forEach(k => delete customColumnData[k]);
-    Object.keys(domainMap).forEach(k => delete domainMap[k]);
-
-    applyCloudSettings(data);
-    applyCloudDomainData(data);
-    buildCompaniesFromDomainMap();
-    renderTableHeader();
-    renderTable();
-    updateStats();
-    updateBlockedCount();
-    updateFlaggedCount();
-    persistData();
-
-    const blockedAfter = blockedDomains.size;
-    const domainsAfter = Object.keys(domainMap).length;
-
-    status.textContent = 'Restored from ' + dateLabel + '! Blocked domains: ' + blockedBefore + ' → ' + blockedAfter + ', Domains: ' + domainsBefore + ' → ' + domainsAfter;
-    status.style.color = 'var(--green)';
-
-    // Hide the version list
-    const vl = getCloudVersionListEl();
-    if (vl) vl.style.display = 'none';
-    renderBlockedDomainsList();
-
-    // Save the merged data back to cloud
-    scheduleCloudSync();
-  } catch(e) {
-    status.textContent = 'Restore failed: ' + e.message;
-    status.style.color = 'var(--red)';
-  }
-}
-
-// Automatically recover company types from OneDrive version history.
-// Finds the version with the most company types and does a FULL restore
-// of all settings (types, starred, flagged, proposals, etc.) from that version.
-// This prevents losing categorization work across devices/browsers.
-async function autoRecoverCompanyTypes(forceCheck) {
-  var localTypeCount = Object.keys(companyTypes).length;
-  if (!forceCheck && localTypeCount >= 10) return; // already have enough types, no recovery needed
-  if (!currentAccount) { alert('Sign in first to recover from cloud.'); return; }
-  console.log('Auto-recovery: ' + localTypeCount + ' company types locally — scanning OneDrive version history for best backup...');
-  try {
-    const token = await getCloudToken();
-    if (!token) { console.warn('Auto-recovery: no token for type recovery'); return; }
-    const metaResp = await fetch(
-      'https://graph.microsoft.com/v1.0/me/drive/special/approot:/kennion_sync_v3.json',
-      { headers: { 'Authorization': 'Bearer ' + token } }
-    );
-    if (!metaResp.ok) return;
-    const fileMeta = await metaResp.json();
-    const fileId = fileMeta.id;
-
-    const versResp = await fetch(
-      'https://graph.microsoft.com/v1.0/me/drive/items/' + fileId + '/versions',
-      { headers: { 'Authorization': 'Bearer ' + token } }
-    );
-    if (!versResp.ok) return;
-    const versData = await versResp.json();
-    const versions = (versData.value || []).sort((a, b) => new Date(b.lastModifiedDateTime) - new Date(a.lastModifiedDateTime));
-
-    console.log('Auto-recovery: checking ' + versions.length + ' cloud versions for company types');
-
-    let bestData = null;
-    let bestTypeCount = 0;
-    let bestDate = '';
-
-    for (const v of versions) {
-      try {
-        const vResp = await fetch(
-          'https://graph.microsoft.com/v1.0/me/drive/items/' + fileId + '/versions/' + v.id + '/content',
-          { headers: { 'Authorization': 'Bearer ' + token } }
-        );
-        if (!vResp.ok) continue;
-        const data = await vResp.json();
-        const types = data.settings && data.settings.company_types ? data.settings.company_types : {};
-        const typeCount = Object.keys(types).length;
-        const domainCount = data.domainData ? Object.keys(data.domainData).length : 0;
-
-        console.log('Auto-recovery: version ' + v.id + ' from ' + v.lastModifiedDateTime + ' — ' + typeCount + ' company types, ' + domainCount + ' domains');
-
-        if (typeCount > bestTypeCount) {
-          bestTypeCount = typeCount;
-          bestData = data;
-          bestDate = v.lastModifiedDateTime;
-        }
-        // If we found a version with many types, use it
-        if (bestTypeCount >= 20) break;
-      } catch(vErr) {
-        console.warn('Auto-recovery: failed to read version ' + v.id, vErr);
-      }
-    }
-
-    if (bestData && bestTypeCount > localTypeCount) {
-      console.log('Auto-recovery: BEST version from ' + bestDate + ' with ' + bestTypeCount + ' company types (local had ' + localTypeCount + ')');
-      // Full restore — settings AND domain data from the best version
-      applyCloudSettings(bestData);
-      if (bestData.domainData && Object.keys(bestData.domainData).length > 0) {
-        applyCloudDomainData(bestData);
-      }
-      buildCompaniesFromDomainMap();
-      renderTableHeader();
-      renderTable();
-      updateStats();
-      updateBlockedCount();
-      updateFlaggedCount();
-      persistData();
-      var dateLabel = new Date(bestDate).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-      setSyncBadge('success', 'Recovered ' + bestTypeCount + ' client categories');
-      alert('Restored ' + bestTypeCount + ' client categorizations from OneDrive backup (' + dateLabel + ').\n\nAll your settings (categories, starred, flagged, proposals, etc.) have been recovered.');
-      console.log('Auto-recovery: SUCCESS — full restore from ' + bestDate + ' with ' + Object.keys(companyTypes).length + ' company types');
-      // Save restored state back to cloud so it sticks
-      scheduleCloudSync();
-    } else {
-      console.log('Auto-recovery: no version with more company types found');
-    }
-  } catch(e) {
-    console.warn('Auto-recovery: company type recovery error:', e);
-  }
-}
-
-// Automatically recover blocked domains from OneDrive version history.
-// Looks for the best version: one where blocked domains is > 0 but NOT nearly
-// all domains (which would indicate a corruption bug, not real user data).
-async function autoRecoverBlockedDomains() {
-  if (blockedDomains.size > 0) return; // nothing to recover
-  if (!currentAccount) return;
-  console.log('Auto-recovery: blocked domains list is empty — checking OneDrive version history...');
-  try {
-    const token = await getCloudToken();
-    if (!token) { console.warn('Auto-recovery: no token'); return; }
-
-    // Get file metadata
-    const metaResp = await fetch(
-      'https://graph.microsoft.com/v1.0/me/drive/special/approot:/' + CLOUD_SYNC_FILE,
-      { headers: { 'Authorization': 'Bearer ' + token } }
-    );
-    if (!metaResp.ok) { console.warn('Auto-recovery: file metadata failed HTTP ' + metaResp.status); return; }
-    const fileMeta = await metaResp.json();
-    const fileId = fileMeta.id;
-
-    // Get version history
-    const versResp = await fetch(
-      'https://graph.microsoft.com/v1.0/me/drive/items/' + fileId + '/versions',
-      { headers: { 'Authorization': 'Bearer ' + token } }
-    );
-    if (!versResp.ok) { console.warn('Auto-recovery: versions failed HTTP ' + versResp.status); return; }
-    const versData = await versResp.json();
-    // Sort by date, newest first
-    const versions = (versData.value || []).sort((a, b) => new Date(b.lastModifiedDateTime) - new Date(a.lastModifiedDateTime));
-
-    console.log('Auto-recovery: found ' + versions.length + ' versions to check');
-
-    // Scan all versions and pick the best one:
-    // - Has blocked domains > 0
-    // - Blocked count is NOT >= 90% of total domains (that was a bug state)
-    let bestVersion = null;
-    let bestBlocked = 0;
-    let bestDate = '';
-
-    for (const v of versions) {
-      try {
-        const vResp = await fetch(
-          'https://graph.microsoft.com/v1.0/me/drive/items/' + fileId + '/versions/' + v.id + '/content',
-          { headers: { 'Authorization': 'Bearer ' + token } }
-        );
-        if (!vResp.ok) continue;
-        const data = await vResp.json();
-        const bl = data.settings && data.settings.blocked_domains ? data.settings.blocked_domains : [];
-        const totalDomains = data.domainData ? Object.keys(data.domainData).length : 0;
-        const ratio = totalDomains > 0 ? bl.length / totalDomains : 0;
-
-        console.log('Auto-recovery: version ' + v.id + ' from ' + v.lastModifiedDateTime + ' — ' + bl.length + ' blocked / ' + totalDomains + ' total (' + Math.round(ratio * 100) + '%)');
-
-        // Skip versions where everything is blocked (bug state) or nothing is blocked
-        if (bl.length === 0) continue;
-        if (totalDomains > 0 && ratio >= 0.9) {
-          console.log('Auto-recovery: skipping version — ' + Math.round(ratio * 100) + '% blocked looks like corruption');
-          continue;
-        }
-
-        // Pick the version with the most blocked domains (that isn't corrupted)
-        if (bl.length > bestBlocked) {
-          bestBlocked = bl.length;
-          bestVersion = data;
-          bestDate = v.lastModifiedDateTime;
-        }
-      } catch(vErr) {
-        console.warn('Auto-recovery: failed to read version ' + v.id + ':', vErr.message);
-        continue;
-      }
-    }
-
-    if (bestVersion) {
-      const bl = bestVersion.settings.blocked_domains;
-      console.log('Auto-recovery: BEST version from ' + bestDate + ' with ' + bl.length + ' blocked domains');
-      for (const d of bl) blockedDomains.add(d);
-      saveBlockedDomains();
-      applyCloudSettings(bestVersion);
-      buildCompaniesFromDomainMap();
-      renderTable();
-      updateStats();
-      updateBlockedCount();
-      persistData();
-      renderBlockedDomainsList();
-      setSyncBadge('success', 'Recovered ' + bl.length + ' blocked domains');
-      alert('Recovered ' + bl.length + ' blocked domains from OneDrive backup (version from ' + new Date(bestDate).toLocaleDateString() + ')');
-      console.log('Auto-recovery: SUCCESS — restored ' + blockedDomains.size + ' blocked domains');
-    } else {
-      console.log('Auto-recovery: no suitable version found in history (all were either empty or fully blocked)');
-    }
-  } catch(e) {
-    console.warn('Auto-recovery: error:', e);
-  }
-}
+// Legacy OneDrive recovery functions removed — Supabase is source of truth
+function restoreCloudVersion() {}
+function autoRecoverCompanyTypes() {}
+function autoRecoverBlockedDomains() {}
 
 function exportBackup() {
-  const payload = gatherSyncPayload();
+  const payload = {
+    version: 4,
+    exportedAt: new Date().toISOString(),
+    userEmail: userEmail,
+    companies: Object.keys(domainMap).length,
+    settings: {
+      company_types: companyTypes,
+      blocked_domains: [...blockedDomains],
+      starred_companies: [...starredCompanies],
+      archived_companies: [...archivedCompanies],
+      flagged_companies: [...flaggedCompanies],
+      followup_companies: [...followUpCompanies],
+      followup_dates: followUpDates,
+      proposal_notes: proposalNotes,
+      proposal_stages: proposalStages,
+      starred_contacts: starredContacts,
+      column_config: columnConfig,
+      custom_column_data: customColumnData,
+      company_names: companyNameCache,
+      contact_names: contactNameOverrides,
+    }
+  };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'kennion-crm-backup-' + new Date().toISOString().slice(0, 10) + '.json';
   a.click();
-  const status = document.getElementById('cloudSyncStatus');
-  if (status) { status.textContent = 'Backup file downloaded.'; status.style.color = 'var(--green)'; }
 }
 
 function importBackup(event) {
   const file = event.target.files[0];
   if (!file) return;
-  const status = document.getElementById('cloudSyncStatus');
   const reader = new FileReader();
   reader.onload = function(e) {
     try {
       const data = JSON.parse(e.target.result);
       if (!data.version || !data.settings) { alert('Invalid backup file.'); return; }
       if (!confirm('This will merge the backup with your current data. Continue?')) return;
-      applyCloudSettings(data);
-      applyCloudDomainData(data);
+      const s = data.settings;
+      if (s.company_types) Object.assign(companyTypes, s.company_types);
+      if (s.blocked_domains) s.blocked_domains.forEach(d => blockedDomains.add(d));
+      if (s.starred_companies) s.starred_companies.forEach(d => starredCompanies.add(d));
+      if (s.archived_companies) s.archived_companies.forEach(d => archivedCompanies.add(d));
+      if (s.flagged_companies) s.flagged_companies.forEach(d => flaggedCompanies.add(d));
+      if (s.followup_companies) s.followup_companies.forEach(d => followUpCompanies.add(d));
+      if (s.followup_dates) Object.assign(followUpDates, s.followup_dates);
+      if (s.proposal_notes) Object.assign(proposalNotes, s.proposal_notes);
+      if (s.proposal_stages) Object.assign(proposalStages, s.proposal_stages);
+      if (s.starred_contacts) Object.assign(starredContacts, s.starred_contacts);
+      if (s.column_config) columnConfig = s.column_config;
+      if (s.custom_column_data) Object.assign(customColumnData, s.custom_column_data);
+      if (s.company_names) Object.assign(companyNameCache, s.company_names);
+      if (s.contact_names) Object.assign(contactNameOverrides, s.contact_names);
       buildCompaniesFromDomainMap();
       renderTableHeader();
       renderTable();
@@ -9228,13 +8391,13 @@ function importBackup(event) {
       updateFlaggedCount();
       persistData();
       scheduleCloudSync();
-      if (status) { status.textContent = 'Backup imported! (' + Object.keys(domainMap).length + ' domains)'; status.style.color = 'var(--green)'; }
+      alert('Backup imported! (' + Object.keys(domainMap).length + ' domains)');
     } catch(err) {
       alert('Failed to parse backup file: ' + err.message);
     }
   };
   reader.readAsText(file);
-  event.target.value = ''; // reset file input
+  event.target.value = '';
 }
 
 // ──────────────────────────────────────────────
@@ -10390,15 +9553,15 @@ function esc(text) {
 window.addEventListener('beforeunload', () => {
   if (currentAccount && Object.keys(domainMap).length > 0) {
     persistData();
-    // Flush pending cloud sync on page close
-    if (cloudSyncTimer) { clearTimeout(cloudSyncTimer); cloudSyncTimer = null; saveToCloud(); }
+    // Flush pending Supabase sync on page close
+    scheduleSupabaseSync();
   }
 });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && currentAccount && Object.keys(domainMap).length > 0) {
     persistData();
-    // Fire cloud sync immediately if changes pending
-    if (cloudSyncTimer) { clearTimeout(cloudSyncTimer); cloudSyncTimer = null; saveToCloud(); }
+    // Fire Supabase sync immediately if changes pending
+    scheduleSupabaseSync();
   }
 });
 
