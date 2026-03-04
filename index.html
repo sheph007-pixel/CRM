@@ -2874,8 +2874,8 @@ async function loadFromSupabase() {
           const val = typeof s.value === 'string' ? JSON.parse(s.value) : s.value;
           switch (s.key) {
             case 'column_config': if (val && val.length > 0) columnConfig = val; break;
-            case 'email_signature': if (val) saveEmailSignature(val); break;
-            case 'email_throttle': if (val) saveThrottleSettingsToStorage(val); break;
+            case 'email_signature': if (val) localStorage.setItem('kennion_email_signature', val); break;
+            case 'email_throttle': if (val) localStorage.setItem('kennion_email_throttle', JSON.stringify(val)); break;
             case 'openai_key': if (val) localStorage.setItem('kennion_openai_key', val); break;
             case 'client_id': if (val) localStorage.setItem('relateflow_client_id', val); break;
             case 'contact_name_overrides': if (val) Object.assign(contactNameOverrides, val); break;
@@ -2957,7 +2957,62 @@ function updateSupabaseBadge(status) {
   }
 }
 
-// Legacy OneDrive stubs (no-op)
+// ── REAL-TIME REFRESH (pull changes from other devices) ──
+let lastRefreshTime = 0;
+let refreshInProgress = false;
+let supabaseRefreshTimer = null;
+
+async function refreshFromSupabase() {
+  if (!supabaseReady || !supabaseUserId || refreshInProgress) return;
+  if (supabaseSyncInProgress) return; // don't refresh while syncing
+  // Throttle: at most once every 10 seconds
+  if (Date.now() - lastRefreshTime < 10000) return;
+  refreshInProgress = true;
+  try {
+    // Clear mutable state before reload
+    Object.keys(companyTypes).forEach(k => delete companyTypes[k]);
+    starredCompanies.clear();
+    archivedCompanies.clear();
+    flaggedCompanies.clear();
+    blockedDomains.clear();
+    followUpCompanies.clear();
+    Object.keys(followUpDates).forEach(k => delete followUpDates[k]);
+    Object.keys(proposalNotes).forEach(k => delete proposalNotes[k]);
+    Object.keys(proposalStages).forEach(k => delete proposalStages[k]);
+    Object.keys(mergedDomains).forEach(k => delete mergedDomains[k]);
+    Object.keys(starredContacts).forEach(k => delete starredContacts[k]);
+    Object.keys(customColumnData).forEach(k => delete customColumnData[k]);
+
+    const result = await loadFromSupabase();
+    if (result && result.domainMap && Object.keys(result.domainMap).length > 0) {
+      domainMap = result.domainMap;
+      buildCompaniesFromDomainMap();
+      renderTable();
+      updateStats();
+      updateBlockedCount();
+      updateFlaggedCount();
+      updateLastSyncDisplay();
+      updateSupabaseBadge('success');
+    }
+    lastRefreshTime = Date.now();
+  } catch(e) {
+    console.warn('Supabase: refresh failed:', e);
+  } finally {
+    refreshInProgress = false;
+  }
+}
+
+// Auto-refresh every 30 seconds when page is visible
+function startSupabasePolling() {
+  if (supabaseRefreshTimer) return;
+  supabaseRefreshTimer = setInterval(() => {
+    if (!document.hidden && supabaseReady && supabaseUserId) {
+      refreshFromSupabase();
+    }
+  }, 30000);
+}
+
+// Legacy stubs (no-op)
 function setSyncBadge() {}
 function gatherSyncPayload() { return {}; }
 
@@ -4089,6 +4144,9 @@ async function onSignedIn() {
 
   // Keep data fresh automatically
   startAutoSync();
+
+  // Start real-time polling — pull changes from other devices every 30s
+  startSupabasePolling();
 }
 
 // Scan progress shown in the account bar
@@ -9467,6 +9525,9 @@ document.addEventListener('visibilitychange', () => {
     persistData();
     // Fire Supabase sync immediately if changes pending
     scheduleSupabaseSync();
+  } else if (!document.hidden && currentAccount) {
+    // Tab became visible — pull latest data from Supabase (other device may have changed it)
+    refreshFromSupabase();
   }
 });
 
