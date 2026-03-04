@@ -2696,10 +2696,16 @@ async function loadFromSupabase() {
     const companyIdToDomain = {};
     for (const c of companyData) {
       companyIdToDomain[c.id] = c.domain;
+      // Populate sentIds/receivedIds with placeholder IDs from stored counts
+      // so buildCompaniesFromDomainMap() doesn't filter them out (uniqueSent === 0 check)
+      const sentPlaceholders = new Set();
+      for (let i = 0; i < (c.sent_count || 0); i++) sentPlaceholders.add('__db_sent_' + c.domain + '_' + i);
+      const recvPlaceholders = new Set();
+      for (let i = 0; i < (c.received_count || 0); i++) recvPlaceholders.add('__db_recv_' + c.domain + '_' + i);
       newDomainMap[c.domain] = {
         contacts: {},
-        sentIds: new Set(),
-        receivedIds: new Set(),
+        sentIds: sentPlaceholders,
+        receivedIds: recvPlaceholders,
         lastDate: c.last_activity_date ? new Date(c.last_activity_date) : null,
         lastSentDate: c.last_sent_date ? new Date(c.last_sent_date) : null,
         lastReceivedDate: c.last_received_date ? new Date(c.last_received_date) : null,
@@ -2713,11 +2719,16 @@ async function loadFromSupabase() {
       for (const ct of contactData) {
         const domain = companyIdToDomain[ct.company_id];
         if (!domain || !newDomainMap[domain]) continue;
+        // Populate contact sentIds/receivedIds with placeholders from stored counts
+        const ctSent = new Set();
+        for (let i = 0; i < (ct.sent_count || 0); i++) ctSent.add('__db_ct_sent_' + ct.email + '_' + i);
+        const ctRecv = new Set();
+        for (let i = 0; i < (ct.received_count || 0); i++) ctRecv.add('__db_ct_recv_' + ct.email + '_' + i);
         newDomainMap[domain].contacts[ct.email] = {
           name: ct.name || ct.email,
           email: ct.email,
-          sentIds: new Set(),
-          receivedIds: new Set(),
+          sentIds: ctSent,
+          receivedIds: ctRecv,
           lastDate: ct.last_activity_date ? new Date(ct.last_activity_date) : null,
         };
         if (ct.is_starred) starredContacts[domain] = ct.email;
