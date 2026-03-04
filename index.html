@@ -2667,23 +2667,36 @@ async function syncToSupabase() {
       }
     }
 
-    // Batch upsert companies (chunks of 200)
-    for (let i = 0; i < companyRows.length; i += 200) {
-      const batch = companyRows.slice(i, i + 200);
+    // Batch upsert companies (chunks of 500)
+    let companyFails = 0;
+    for (let i = 0; i < companyRows.length; i += 500) {
+      const batch = companyRows.slice(i, i + 500);
       const { error } = await supabaseClient
         .from('companies')
         .upsert(batch, { onConflict: 'user_id,domain' });
-      if (error) console.warn('Supabase: company batch ' + i + ' failed:', error.message);
+      if (error) {
+        companyFails++;
+        console.warn('Supabase: company batch ' + i + ' failed:', error.message);
+        // Retry with smaller chunks if batch too large
+        for (let j = 0; j < batch.length; j += 100) {
+          const smallBatch = batch.slice(j, j + 100);
+          const { error: e2 } = await supabaseClient
+            .from('companies')
+            .upsert(smallBatch, { onConflict: 'user_id,domain' });
+          if (e2) console.warn('Supabase: company retry batch ' + (i+j) + ' failed:', e2.message);
+        }
+      }
     }
+    if (companyFails > 0) console.warn('Supabase: ' + companyFails + ' company batches needed retry');
 
     // Get company IDs for contact foreign keys
     const companyIdRows = await supabaseFetchAll('companies', 'id, domain', { user_id: supabaseUserId });
     const domainToCompanyId = {};
     for (const r of companyIdRows) domainToCompanyId[r.domain] = r.id;
 
-    // Batch upsert contacts (chunks of 200)
-    for (let i = 0; i < contactRows.length; i += 200) {
-      const batch = contactRows.slice(i, i + 200).map(c => {
+    // Batch upsert contacts (chunks of 500)
+    for (let i = 0; i < contactRows.length; i += 500) {
+      const batch = contactRows.slice(i, i + 500).map(c => {
         const { _domain, ...rest } = c;
         rest.company_id = domainToCompanyId[_domain] || null;
         return rest;
@@ -2692,7 +2705,17 @@ async function syncToSupabase() {
       const { error } = await supabaseClient
         .from('contacts')
         .upsert(batch, { onConflict: 'user_id,email' });
-      if (error) console.warn('Supabase: contact batch ' + i + ' failed:', error.message);
+      if (error) {
+        console.warn('Supabase: contact batch ' + i + ' failed:', error.message);
+        // Retry with smaller chunks
+        for (let j = 0; j < batch.length; j += 100) {
+          const smallBatch = batch.slice(j, j + 100);
+          const { error: e2 } = await supabaseClient
+            .from('contacts')
+            .upsert(smallBatch, { onConflict: 'user_id,email' });
+          if (e2) console.warn('Supabase: contact retry batch ' + (i+j) + ' failed:', e2.message);
+        }
+      }
     }
 
     // Sync user settings — only settings that DON'T live on companies table
@@ -4303,11 +4326,12 @@ async function onSignedIn(cacheRendered, earlySbData) {
   // a previous bug wiped the counts. Force full rescan to recover real counts.
   let needsCountRecovery = false;
   if (hasData) {
-    const domains = Object.values(domainMap);
-    const dbDomains = domains.filter(d => d._fromDb);
-    const zeroCountDomains = dbDomains.filter(d => d._dbSentCount === 0 && d._dbReceivedCount === 0);
+    const domains = Object.entries(domainMap);
+    // Only check non-blocked domains — blocked domains naturally have zero counts
+    const dbDomains = domains.filter(([d, v]) => v._fromDb && !v.is_blocked);
+    const zeroCountDomains = dbDomains.filter(([d, v]) => v._dbSentCount === 0 && v._dbReceivedCount === 0);
     if (dbDomains.length > 4 && zeroCountDomains.length > dbDomains.length * 0.5) {
-      console.log('Startup: detected corrupted counts (' + zeroCountDomains.length + '/' + dbDomains.length + ' have zero counts) — forcing full rescan');
+      console.log('Startup: detected corrupted counts (' + zeroCountDomains.length + '/' + dbDomains.length + ' non-blocked have zero counts) — forcing full rescan');
       needsCountRecovery = true;
       fullScanDone = false;
       deltaLink = null;
