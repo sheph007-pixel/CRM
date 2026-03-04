@@ -4184,43 +4184,18 @@ function showWelcome() {
 }
 
 async function onSignedIn(unused, supabasePromise) {
-  // Set up sidebar FIRST (while content is still hidden) to prevent
-  // a flash of full-width content before sidebar appears.
-  const sb = document.getElementById('sidebar');
-  sb.style.display = 'flex';
-  if (_sidebarCollapsed) {
-    sb.classList.add('collapsed');
-  } else {
-    sb.classList.remove('collapsed');
-  }
-  document.getElementById('settingsBtn').style.display = '';
-  document.getElementById('signOutBtn').style.display = '';
-  document.getElementById('userPill').style.display = 'flex';
-  document.getElementById('userName').textContent = userEmail;
-  document.getElementById('settingsNavItem').style.display = '';
-  document.getElementById('globalSearchWrap').style.display = '';
-  document.getElementById('aiFab').classList.remove('hidden');
-  // NOW reveal content — sidebar is already positioned
-  document.getElementById('authLoading').style.display = 'none';
-  document.getElementById('welcomeScreen').style.display = 'none';
-  document.getElementById('crmContent').classList.add('active');
-  setViewTitle('All Companies', true);
-
+  // ── STEP 1: Load ALL data while "Loading..." spinner is still showing ──
+  // Don't show ANY UI until data is ready. No empty screens, no flashes.
   let hasData = false;
   const startupTime = Date.now();
 
-  // ── SUPABASE: single authoritative load ──
-  // Supabase was already started in parallel with MSAL, so the promise
-  // is usually resolved (or nearly so) by the time we get here.
-  // We always await it — no stale cache rendering.
   if (!supabaseReady) await initSupabase();
   try {
     if (!supabaseReady) throw new Error('Supabase not ready');
     const msId = currentAccount.homeAccountId || currentAccount.localAccountId || currentAccount.username;
-    const earlyUid = supabaseUserId; // might have been set by parallel load
+    const earlyUid = supabaseUserId;
     await supabaseEnsureUser(msId, userEmail, currentAccount.name || userEmail);
     if (!supabaseUserId) throw new Error('No user ID');
-    // Use parallel-loaded data if UID matches, otherwise fetch fresh
     const uidMatch = earlyUid && earlyUid === supabaseUserId;
     const sbData = (uidMatch && supabasePromise) ? await supabasePromise : await loadFromSupabase();
     if (sbData && sbData.domainMap && Object.keys(sbData.domainMap).length > 0) {
@@ -4232,19 +4207,36 @@ async function onSignedIn(unused, supabasePromise) {
       seenMsgIds = new Set();
       domainMap = sbData.domainMap;
       hasData = true;
-      // Single render — correct data, full UI chrome already visible
       buildCompaniesFromDomainMap();
-      renderTableHeader();
-      renderTable();
-      updateStats();
-      updateLastSyncDisplay();
-      resolveCompanyNames();
-      updateSupabaseBadge('success');
       console.log('Startup: Supabase loaded — ' + Object.keys(domainMap).length + ' domains, ' + companies.length + ' companies in ' + (Date.now() - startupTime) + 'ms');
     }
   } catch(e) {
     console.warn('Startup: Supabase load failed:', e);
   }
+
+  // ── STEP 2: Show EVERYTHING at once — sidebar, content, data ──
+  // All DOM updates are synchronous = browser paints once = no flash.
+  const sb = document.getElementById('sidebar');
+  sb.style.display = 'flex';
+  if (_sidebarCollapsed) sb.classList.add('collapsed');
+  else sb.classList.remove('collapsed');
+  document.getElementById('settingsBtn').style.display = '';
+  document.getElementById('signOutBtn').style.display = '';
+  document.getElementById('userPill').style.display = 'flex';
+  document.getElementById('userName').textContent = userEmail;
+  document.getElementById('settingsNavItem').style.display = '';
+  document.getElementById('globalSearchWrap').style.display = '';
+  document.getElementById('aiFab').classList.remove('hidden');
+  document.getElementById('authLoading').style.display = 'none';
+  document.getElementById('welcomeScreen').style.display = 'none';
+  document.getElementById('crmContent').classList.add('active');
+  setViewTitle('All Companies', true);
+  renderTableHeader();
+  renderTable();
+  updateStats();
+  updateLastSyncDisplay();
+  updateSupabaseBadge(hasData ? 'success' : 'error');
+  resolveCompanyNames();
 
   updateBlockedCount();
   updateFlaggedCount();
