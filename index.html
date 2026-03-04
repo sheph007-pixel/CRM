@@ -4129,86 +4129,12 @@ async function onSignedIn() {
   document.getElementById('userName').textContent = userEmail;
   document.getElementById('settingsNavItem').style.display = '';
 
-  // ── SUPABASE: Initialize and register user ──
-  if (initSupabase()) {
-    const msId = currentAccount.homeAccountId || currentAccount.localAccountId || currentAccount.username;
-    await supabaseEnsureUser(msId, userEmail, currentAccount.name || userEmail);
-  }
-
-  // ── FAST STARTUP: Database first, then local cache, then cloud ──
-  // Step 0: Try loading from Supabase (source of truth)
+  // ── INSTANT RENDER: Show cached data immediately while network loads ──
   let hasData = false;
   let cloudOnlyRestore = false;
+  let renderedFromCache = false;
 
-  if (supabaseReady && supabaseUserId) {
-    try {
-      // Clear all state loaded from localStorage so Supabase is truly the source of truth
-      Object.keys(companyTypes).forEach(k => delete companyTypes[k]);
-      starredCompanies.clear();
-      archivedCompanies.clear();
-      flaggedCompanies.clear();
-      blockedDomains.clear();
-      followUpCompanies.clear();
-      Object.keys(followUpDates).forEach(k => delete followUpDates[k]);
-      Object.keys(proposalNotes).forEach(k => delete proposalNotes[k]);
-      Object.keys(proposalStages).forEach(k => delete proposalStages[k]);
-      Object.keys(mergedDomains).forEach(k => delete mergedDomains[k]);
-      Object.keys(starredContacts).forEach(k => delete starredContacts[k]);
-      Object.keys(customColumnData).forEach(k => delete customColumnData[k]);
-      Object.keys(companyNameCache).forEach(k => delete companyNameCache[k]);
-      Object.keys(enrichmentCache).forEach(k => delete enrichmentCache[k]);
-      Object.keys(contactEnrichment).forEach(k => delete contactEnrichment[k]);
-      Object.keys(contactNameOverrides).forEach(k => delete contactNameOverrides[k]);
-
-      const sbData = await loadFromSupabase();
-      if (sbData && sbData.domainMap && Object.keys(sbData.domainMap).length > 0) {
-        domainMap = sbData.domainMap;
-        if (sbData.scanMeta) {
-          lastScanTime = sbData.scanMeta.lastScanTime;
-          fullScanDone = sbData.scanMeta.fullScanDone || false;
-          deltaLink = sbData.scanMeta.deltaLink || null;
-        }
-        seenMsgIds = new Set();
-        // Rebuild seenMsgIds from domainMap
-        for (const d of Object.values(domainMap)) {
-          for (const id of d.sentIds) seenMsgIds.add(id);
-          for (const id of d.receivedIds) seenMsgIds.add(id);
-        }
-        hasData = true;
-        // Cache Supabase data to localStorage for fast startup
-        localStorage.setItem('kennion_company_types', JSON.stringify(companyTypes));
-        localStorage.setItem('relateflow_blocked_domains', JSON.stringify([...blockedDomains]));
-        localStorage.setItem('kennion_starred_companies', JSON.stringify([...starredCompanies]));
-        localStorage.setItem('kennion_archived_companies', JSON.stringify([...archivedCompanies]));
-        localStorage.setItem('kennion_flagged_companies', JSON.stringify([...flaggedCompanies]));
-        localStorage.setItem('kennion_followup_companies', JSON.stringify([...followUpCompanies]));
-        localStorage.setItem('kennion_followup_dates', JSON.stringify(followUpDates));
-        localStorage.setItem('kennion_merged_domains', JSON.stringify(mergedDomains));
-        localStorage.setItem('kennion_columns', JSON.stringify(columnConfig));
-        localStorage.setItem('relateflow_company_names', JSON.stringify(companyNameCache));
-        localStorage.setItem('relateflow_contact_names', JSON.stringify(contactNameOverrides));
-        localStorage.setItem('kennion_proposal_notes', JSON.stringify(proposalNotes));
-        localStorage.setItem('kennion_proposal_stages', JSON.stringify(proposalStages));
-        buildCompaniesFromDomainMap();
-        renderTableHeader();
-        renderTable();
-        updateStats();
-        updateLastSyncDisplay();
-        resolveCompanyNames();
-        runEnrichment();
-        persistData(); // cache locally for offline
-        updateSupabaseBadge('success');
-        console.log('Startup: loaded ' + Object.keys(domainMap).length + ' domains from Supabase database');
-        // Re-apply any local edits that were in-flight when the page was last closed
-        reapplyPendingEdits();
-      }
-    } catch(e) {
-      console.warn('Startup: Supabase load failed, falling back to local:', e);
-    }
-  }
-
-  // Step 1: If Supabase had no data, load local cache (same browser = fast)
-  if (!hasData) {
+  // Step 0: Load from IndexedDB + localStorage FIRST (instant, no network)
   const cached = await loadPersistedData();
   const hasLocalData = cached && cached.domainMap && Object.keys(cached.domainMap).length > 0;
   if (hasLocalData) {
@@ -4248,21 +4174,102 @@ async function onSignedIn() {
       fullScanDone = false;
       deltaLink = null;
     }
+    // Render instantly from cache — user sees data immediately
     buildCompaniesFromDomainMap();
     renderTableHeader();
     renderTable();
     updateStats();
     updateLastSyncDisplay();
+    hasData = true;
+    renderedFromCache = true;
+    console.log('Startup: instant render from cache — ' + Object.keys(domainMap).length + ' domains');
+  }
+
+  // ── SUPABASE: Initialize and register user (network) ──
+  if (initSupabase()) {
+    const msId = currentAccount.homeAccountId || currentAccount.localAccountId || currentAccount.username;
+    await supabaseEnsureUser(msId, userEmail, currentAccount.name || userEmail);
+  }
+
+  // Step 1: Load latest from Supabase (source of truth) and update UI
+  if (supabaseReady && supabaseUserId) {
+    try {
+      // Clear all state so Supabase is truly the source of truth
+      Object.keys(companyTypes).forEach(k => delete companyTypes[k]);
+      starredCompanies.clear();
+      archivedCompanies.clear();
+      flaggedCompanies.clear();
+      blockedDomains.clear();
+      followUpCompanies.clear();
+      Object.keys(followUpDates).forEach(k => delete followUpDates[k]);
+      Object.keys(proposalNotes).forEach(k => delete proposalNotes[k]);
+      Object.keys(proposalStages).forEach(k => delete proposalStages[k]);
+      Object.keys(mergedDomains).forEach(k => delete mergedDomains[k]);
+      Object.keys(starredContacts).forEach(k => delete starredContacts[k]);
+      Object.keys(customColumnData).forEach(k => delete customColumnData[k]);
+      Object.keys(companyNameCache).forEach(k => delete companyNameCache[k]);
+      Object.keys(enrichmentCache).forEach(k => delete enrichmentCache[k]);
+      Object.keys(contactEnrichment).forEach(k => delete contactEnrichment[k]);
+      Object.keys(contactNameOverrides).forEach(k => delete contactNameOverrides[k]);
+
+      const sbData = await loadFromSupabase();
+      if (sbData && sbData.domainMap && Object.keys(sbData.domainMap).length > 0) {
+        domainMap = sbData.domainMap;
+        if (sbData.scanMeta) {
+          lastScanTime = sbData.scanMeta.lastScanTime;
+          fullScanDone = sbData.scanMeta.fullScanDone || false;
+          deltaLink = sbData.scanMeta.deltaLink || null;
+        }
+        seenMsgIds = new Set();
+        for (const d of Object.values(domainMap)) {
+          for (const id of d.sentIds) seenMsgIds.add(id);
+          for (const id of d.receivedIds) seenMsgIds.add(id);
+        }
+        hasData = true;
+        // Cache Supabase data to localStorage for next instant load
+        localStorage.setItem('kennion_company_types', JSON.stringify(companyTypes));
+        localStorage.setItem('relateflow_blocked_domains', JSON.stringify([...blockedDomains]));
+        localStorage.setItem('kennion_starred_companies', JSON.stringify([...starredCompanies]));
+        localStorage.setItem('kennion_archived_companies', JSON.stringify([...archivedCompanies]));
+        localStorage.setItem('kennion_flagged_companies', JSON.stringify([...flaggedCompanies]));
+        localStorage.setItem('kennion_followup_companies', JSON.stringify([...followUpCompanies]));
+        localStorage.setItem('kennion_followup_dates', JSON.stringify(followUpDates));
+        localStorage.setItem('kennion_merged_domains', JSON.stringify(mergedDomains));
+        localStorage.setItem('kennion_columns', JSON.stringify(columnConfig));
+        localStorage.setItem('relateflow_company_names', JSON.stringify(companyNameCache));
+        localStorage.setItem('relateflow_contact_names', JSON.stringify(contactNameOverrides));
+        localStorage.setItem('kennion_proposal_notes', JSON.stringify(proposalNotes));
+        localStorage.setItem('kennion_proposal_stages', JSON.stringify(proposalStages));
+        // Update UI with fresh Supabase data
+        buildCompaniesFromDomainMap();
+        renderTableHeader();
+        renderTable();
+        updateStats();
+        updateLastSyncDisplay();
+        resolveCompanyNames();
+        runEnrichment();
+        persistData();
+        updateSupabaseBadge('success');
+        console.log('Startup: updated from Supabase — ' + Object.keys(domainMap).length + ' domains');
+        reapplyPendingEdits();
+      } else if (renderedFromCache) {
+        // Supabase had no data but we showed cache — sync cache up to Supabase
+        scheduleSupabaseSync();
+        resolveCompanyNames();
+        runEnrichment();
+      }
+    } catch(e) {
+      console.warn('Startup: Supabase load failed, using cached data:', e);
+      if (renderedFromCache) {
+        resolveCompanyNames();
+        runEnrichment();
+      }
+    }
+  } else if (renderedFromCache) {
+    // No Supabase — just enrich the cached data
     resolveCompanyNames();
     runEnrichment();
-    hasData = true;
-    console.log('Startup: loaded ' + Object.keys(domainMap).length + ' domains from local cache (instant)');
-    // If we loaded from local but Supabase is ready, sync local data up to Supabase
-    if (supabaseReady && supabaseUserId) {
-      scheduleSupabaseSync();
-    }
   }
-  } // end if (!hasData) from Supabase check
 
   // OneDrive cloud merge removed — Supabase is now the source of truth
 
@@ -5210,7 +5217,10 @@ function bulkSetType(type) {
   if (!type) return;
   for (var id of selectedIds) {
     var c = companies.find(function(x) { return x.id === id; });
-    if (c) companyTypes[c.domain] = type;
+    if (c) {
+      companyTypes[c.domain] = type;
+      supabaseSaveCompanyField(c.domain, 'company_type', type ? type.toLowerCase() : null);
+    }
   }
   saveCompanyTypes();
   selectedIds.clear();
@@ -5232,6 +5242,7 @@ function bulkBlockSelected() {
 
   for (const d of domains) {
     blockedDomains.add(d.toLowerCase());
+    supabaseSaveCompanyField(d.toLowerCase(), 'is_blocked', true);
   }
   saveBlockedDomains();
   selectedIds.clear();
@@ -5316,6 +5327,7 @@ function renderBlockedPage() {
 function unblockDomain(domain) {
   blockedDomains.delete(domain);
   saveBlockedDomains();
+  supabaseSaveCompanyField(domain, 'is_blocked', false);
   buildCompaniesFromDomainMap();
   updateStats();
   updateBlockedCount();
@@ -5726,6 +5738,7 @@ function bulkUnflagSelected() {
   if (!confirm(msg)) return;
   for (const d of domains) {
     flaggedCompanies.delete(d);
+    supabaseSaveCompanyField(d, 'is_flagged', false);
   }
   selectedFlaggedDomains.clear();
   saveFlaggedCompanies();
@@ -5745,6 +5758,8 @@ function bulkBlockFlagged() {
   for (const d of domains) {
     flaggedCompanies.delete(d);
     blockedDomains.add(d.toLowerCase());
+    supabaseSaveCompanyField(d, 'is_flagged', false);
+    supabaseSaveCompanyField(d.toLowerCase(), 'is_blocked', true);
   }
   selectedFlaggedDomains.clear();
   saveFlaggedCompanies();
@@ -6840,6 +6855,7 @@ function executeMerge() {
   // Store the merge alias
   mergedDomains[secondaryDomain] = primaryDomain;
   saveMergedDomains();
+  supabaseSaveCompanyField(secondaryDomain, 'merged_into', primaryDomain);
 
   // Copy the primary company name to cache if not already there
   var primaryCompany = (primaryDomain === _mergeCompanyA.domain) ? _mergeCompanyA : _mergeCompanyB;
@@ -6868,6 +6884,7 @@ function unmergeCompany(secondaryDomain) {
   if (!mergedDomains[secondaryDomain]) return;
   delete mergedDomains[secondaryDomain];
   saveMergedDomains();
+  supabaseSaveCompanyField(secondaryDomain, 'merged_into', null);
   buildCompaniesFromDomainMap();
   updateStats();
   renderTable();
@@ -8552,6 +8569,7 @@ function addBlockedDomains(raw) {
     const domain = entry.includes('@') ? entry.split('@')[1] : entry;
     if (domain && !SKIP_DOMAINS.has(domain) && !blockedDomains.has(domain)) {
       blockedDomains.add(domain);
+      supabaseSaveCompanyField(domain, 'is_blocked', true);
       added++;
     }
   }
@@ -8569,6 +8587,7 @@ function addBlockedDomains(raw) {
 function removeBlockedDomain(domain) {
   blockedDomains.delete(domain);
   saveBlockedDomains();
+  supabaseSaveCompanyField(domain, 'is_blocked', false);
   // Rebuild companies — the unblocked domain may reappear
   buildCompaniesFromDomainMap();
   renderTable();
@@ -8580,6 +8599,7 @@ function removeBlockedDomain(domain) {
 function blockDomainFromDetail(domain) {
   blockedDomains.add(domain.toLowerCase());
   saveBlockedDomains();
+  supabaseSaveCompanyField(domain.toLowerCase(), 'is_blocked', true);
   buildCompaniesFromDomainMap();
   renderTable();
   updateStats();
@@ -9653,8 +9673,8 @@ function esc(text) {
   loadArchivedCompanies();
   loadFlaggedCompanies();
   loadMergedDomains();
-  updateFlaggedCount(); // Show correct flagged count immediately on load
-  updateFollowUpCount(); // Show correct follow-up count immediately on load
+  updateFlaggedCount();
+  updateFollowUpCount();
   loadCompanyNameCache();
   loadContactNameOverrides();
   loadStarredContacts();
@@ -9665,6 +9685,37 @@ function esc(text) {
   loadContactEnrichment();
   loadLogoFailedCache();
   renderTableHeader();
+
+  // Show cached data INSTANTLY before MSAL/network loads
+  // This prevents the blank "0" numbers flash on refresh
+  const cachedForInstant = await loadPersistedData();
+  const hasInstantData = cachedForInstant && cachedForInstant.domainMap && Object.keys(cachedForInstant.domainMap).length > 0;
+  if (hasInstantData && getClientId()) {
+    // Show the CRM layout immediately with cached data
+    document.getElementById('authLoading').style.display = 'none';
+    document.getElementById('welcomeScreen').style.display = 'none';
+    document.getElementById('crmContent').classList.add('active');
+    setViewTitle('All Companies', true);
+    const sbInit = document.getElementById('sidebar');
+    sbInit.style.display = 'flex';
+    if (localStorage.getItem('relateflow_sidebar') === 'collapsed') sbInit.classList.add('collapsed');
+    domainMap = cachedForInstant.domainMap;
+    // Upgrade Sets if needed
+    for (const d of Object.values(domainMap)) {
+      if (!(d.sentIds instanceof Set)) d.sentIds = new Set();
+      if (!(d.receivedIds instanceof Set)) d.receivedIds = new Set();
+      for (const c of Object.values(d.contacts)) {
+        if (!(c.sentIds instanceof Set)) c.sentIds = new Set();
+        if (!(c.receivedIds instanceof Set)) c.receivedIds = new Set();
+      }
+    }
+    buildCompaniesFromDomainMap();
+    renderTable();
+    updateStats();
+    updateLastSyncDisplay();
+    console.log('Startup: instant render — ' + companies.length + ' companies visible');
+  }
+
   if (getClientId()) {
     await initMSAL();
     if (msalInstance) {
@@ -9812,6 +9863,7 @@ function finishCellEdit(td, colId, domain, value) {
   if (!customColumnData[domain]) customColumnData[domain] = {};
   customColumnData[domain][colId] = value.trim();
   saveCustomColumnData();
+  supabaseSaveCompanyField(domain, 'custom_data', customColumnData[domain]);
   // Update just this cell without full re-render
   td.innerHTML = '<span class="cell-val">' + esc(value.trim()) + '</span>';
 }
