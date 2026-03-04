@@ -3005,6 +3005,15 @@ function reapplyPendingEdits() {
           case 'followup_date':
             if (v) followUpDates[domain] = v; else delete followUpDates[domain];
             break;
+          case 'proposal_notes':
+            if (v) proposalNotes[domain] = v; else delete proposalNotes[domain];
+            break;
+          case 'proposal_stage':
+            if (v) proposalStages[domain] = v; else delete proposalStages[domain];
+            break;
+          case 'company_name':
+            if (v) companyNameCache[domain] = v;
+            break;
         }
         // Re-push to Supabase (this time the page won't unload immediately)
         supabaseSaveCompanyField(domain, field, v);
@@ -4421,6 +4430,8 @@ function setProposalStage(domain, value) {
   if (value) proposalStages[domain] = value;
   else delete proposalStages[domain];
   saveProposalStages();
+  // Instant save to companies table (source of truth for cross-device sync)
+  supabaseSaveCompanyField(domain, 'proposal_stage', value || null);
   var sel = document.querySelector('select.proposal-stage[data-domain="' + domain + '"]');
   if (sel) {
     var st = PROPOSAL_STAGES.find(function(s) { return s.value === value; }) || PROPOSAL_STAGES[0];
@@ -4434,6 +4445,8 @@ function setProposalNote(domain, value) {
   if (value.trim()) proposalNotes[domain] = value.trim();
   else delete proposalNotes[domain];
   saveProposalNotes();
+  // Instant save to companies table (source of truth for cross-device sync)
+  supabaseSaveCompanyField(domain, 'proposal_notes', value.trim() || null);
 }
 
 function renderProposalsTable() {
@@ -6878,6 +6891,8 @@ function saveCompanyNameEdit(domain, el) {
   companyNameCache[domain] = newName;
   companyNameCacheDirty = true;
   saveCompanyNameCache();
+  // Instant save to companies table for cross-device sync
+  supabaseSaveCompanyField(domain, 'company_name', newName);
   // Update in-memory company object
   var comp = companies.find(function(c) { return c.domain === domain; });
   if (comp) {
