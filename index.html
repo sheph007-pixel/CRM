@@ -3078,11 +3078,10 @@ async function refreshFromSupabase() {
       { user_id: supabaseUserId });
     if (!remoteCompanies || remoteCompanies.length === 0) throw new Error('no data');
 
-    let changed = false;
     for (const row of remoteCompanies) {
       applyCompanyChange(row);
-      changed = true;
     }
+    const changed = true; // always re-render — data may have new contacts/counts from other devices
     if (changed) {
       buildCompaniesFromDomainMap();
       renderTable();
@@ -4195,7 +4194,6 @@ async function onSignedIn(unused, supabasePromise) {
   document.getElementById('aiFab').classList.remove('hidden');
 
   let hasData = false;
-  let cloudOnlyRestore = false;
   const startupTime = Date.now();
 
   // ── SUPABASE: single authoritative load ──
@@ -4206,10 +4204,12 @@ async function onSignedIn(unused, supabasePromise) {
   try {
     if (!supabaseReady) throw new Error('Supabase not ready');
     const msId = currentAccount.homeAccountId || currentAccount.localAccountId || currentAccount.username;
+    const earlyUid = supabaseUserId; // might have been set by parallel load
     await supabaseEnsureUser(msId, userEmail, currentAccount.name || userEmail);
     if (!supabaseUserId) throw new Error('No user ID');
-    // Use data already loaded in parallel with MSAL, or fetch fresh
-    const sbData = supabasePromise ? await supabasePromise : await loadFromSupabase();
+    // Use parallel-loaded data if UID matches, otherwise fetch fresh
+    const uidMatch = earlyUid && earlyUid === supabaseUserId;
+    const sbData = (uidMatch && supabasePromise) ? await supabasePromise : await loadFromSupabase();
     if (sbData && sbData.domainMap && Object.keys(sbData.domainMap).length > 0) {
       if (sbData.scanMeta) {
         lastScanTime = sbData.scanMeta.lastScanTime;
@@ -9631,10 +9631,13 @@ function esc(text) {
   // with MSAL auth, just wait for Supabase and render once with correct data.
 
   // ── START SUPABASE LOAD IN PARALLEL WITH MSAL ──
+  // Start Supabase load in parallel with MSAL auth for speed.
+  // Use cached user ID so we don't have to wait for MSAL to know who to load.
   const cachedUid = localStorage.getItem('kennion_sb_uid');
   const supabasePromise = cachedUid ? (async () => {
     await initSupabase();
     if (!supabaseReady) return null;
+    // Set userId early so loadFromSupabase can use it
     supabaseUserId = cachedUid;
     return await loadFromSupabase();
   })() : null;
