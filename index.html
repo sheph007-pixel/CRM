@@ -8311,10 +8311,9 @@ async function showCloudVersionHistory() {
       const dateStr = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
       const sizeStr = v.size ? Math.round(v.size / 1024) + ' KB' : '';
       const row = document.createElement('div');
-      row.style.cssText = 'padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:13px;';
-      // Preview: download version to show blocked/domain counts
-      let detailHtml = '<span class="ver-detail" style="color:var(--text2);font-size:11px;margin-left:6px">loading...</span>';
-      row.innerHTML = '<div><strong>' + dateStr + '</strong><span style="color:var(--text2);margin-left:8px;font-size:12px">' + sizeStr + '</span>' + detailHtml + '</div><button class="btn btn-ghost btn-sm" style="font-size:11px" data-vid="' + v.id + '" data-fid="' + fileId + '">Restore this version</button>';
+      row.style.cssText = 'padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px;';
+      // Preview: download version to show full stats breakdown
+      row.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><div><strong>' + dateStr + '</strong><span style="color:var(--text2);margin-left:8px;font-size:12px">' + sizeStr + '</span></div><button class="btn btn-ghost btn-sm" style="font-size:11px" data-vid="' + v.id + '" data-fid="' + fileId + '">Restore this version</button></div><div class="ver-detail" style="color:var(--text2);font-size:11px;margin-top:5px">loading...</div>';
       row.querySelector('button').addEventListener('click', async function(e) {
         e.stopPropagation();
         await restoreCloudVersion(fileId, v.id, dateStr);
@@ -8332,35 +8331,46 @@ async function showCloudVersionHistory() {
           const data = await vResp.json();
           const bl = data.settings && data.settings.blocked_domains ? data.settings.blocked_domains.length : 0;
           const domains = data.domainData ? Object.keys(data.domainData).length : 0;
-          const types = data.settings && data.settings.company_types ? Object.keys(data.settings.company_types).length : 0;
-          var currentCount = 0; var oldCount = 0;
+          const ratio = domains > 0 ? bl / domains : 0;
+          // Count each company type category
+          var typeCounts = {};
+          var totalCategorized = 0;
           if (data.settings && data.settings.company_types) {
             for (var tk of Object.values(data.settings.company_types)) {
-              if (tk === 'Current Client') currentCount++;
-              else if (tk === 'Old Client') oldCount++;
+              typeCounts[tk] = (typeCounts[tk] || 0) + 1;
+              totalCategorized++;
             }
           }
-          const ratio = domains > 0 ? bl / domains : 0;
+          const starred = data.settings && data.settings.starred_companies ? data.settings.starred_companies.length : 0;
+          const flagged = data.settings && data.settings.flagged_companies ? data.settings.flagged_companies.length : 0;
           const detailEl = rowEl.querySelector('.ver-detail');
-          var detailParts = [bl + ' blocked', domains + ' domains'];
-          if (types > 0) detailParts.push(types + ' categorized (' + currentCount + ' current, ' + oldCount + ' old)');
-          detailEl.textContent = detailParts.join(' · ');
-          // Highlight: green = has categorized companies, blue = healthy, red = corrupted, grey = empty
-          if (types >= 10) {
-            detailEl.style.color = 'var(--green)';
-            detailEl.textContent += ' ★';
-            rowEl.style.background = 'rgba(76,175,80,0.1)';
+          // Build stats as labeled badges
+          var badgeStyle = 'display:inline-block;padding:1px 7px;border-radius:3px;margin:2px 3px 2px 0;font-size:11px;';
+          var html = '<span style="' + badgeStyle + 'background:var(--bg2);color:var(--text1)">' + domains + ' Companies</span>';
+          if (typeCounts['Lead']) html += '<span style="' + badgeStyle + 'background:#e3f2fd;color:#1565c0">' + typeCounts['Lead'] + ' Leads</span>';
+          if (typeCounts['Current Client']) html += '<span style="' + badgeStyle + 'background:#e8f5e9;color:#2e7d32">' + typeCounts['Current Client'] + ' Current</span>';
+          if (typeCounts['Old Client']) html += '<span style="' + badgeStyle + 'background:#fff3e0;color:#e65100">' + typeCounts['Old Client'] + ' Old</span>';
+          // Show any other categories
+          for (var cat in typeCounts) {
+            if (cat !== 'Lead' && cat !== 'Current Client' && cat !== 'Old Client') {
+              html += '<span style="' + badgeStyle + 'background:#f3e5f5;color:#7b1fa2">' + typeCounts[cat] + ' ' + cat + '</span>';
+            }
+          }
+          if (bl > 0) html += '<span style="' + badgeStyle + 'background:#ffebee;color:#c62828">' + bl + ' Blocked</span>';
+          if (starred > 0) html += '<span style="' + badgeStyle + 'background:#fffde7;color:#f57f17">' + starred + ' Starred</span>';
+          if (flagged > 0) html += '<span style="' + badgeStyle + 'background:#fce4ec;color:#ad1457">' + flagged + ' Flagged</span>';
+          detailEl.innerHTML = html;
+          // Row highlight based on health
+          if (totalCategorized >= 10) {
+            rowEl.style.background = 'rgba(76,175,80,0.07)';
             rowEl.style.borderLeft = '3px solid var(--green)';
-          } else if (bl === 0 && types === 0) {
-            detailEl.style.color = 'var(--text2)';
+          } else if (bl === 0 && totalCategorized === 0) {
             rowEl.style.opacity = '0.5';
           } else if (ratio >= 0.9) {
-            detailEl.style.color = 'var(--red)';
-            detailEl.textContent += ' (ALL blocked — corrupted)';
+            detailEl.innerHTML += '<span style="color:var(--red);margin-left:4px;font-weight:600">(corrupted)</span>';
             rowEl.style.background = 'rgba(244,67,54,0.05)';
             rowEl.style.borderLeft = '3px solid var(--red)';
           } else {
-            detailEl.style.color = '#1a73e8';
             rowEl.style.borderLeft = '3px solid #1a73e8';
           }
         } catch(e) {
