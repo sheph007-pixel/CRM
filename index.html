@@ -1663,50 +1663,27 @@ function getDefaultColumns() {
 }
 
 function loadColumnConfig() {
-  try {
-    const raw = localStorage.getItem('kennion_columns');
-    if (raw) {
-      columnConfig = JSON.parse(raw);
-      // Inject companyType column if missing (added after initial release)
-      if (!columnConfig.find(c => c.id === 'companyType')) {
-        const statusIdx = columnConfig.findIndex(c => c.id === 'status');
-        const typeCol = { id: 'companyType', label: 'Type', type: 'builtin', visible: true };
-        if (statusIdx >= 0) columnConfig.splice(statusIdx + 1, 0, typeCol);
-        else columnConfig.push(typeCol);
-        saveColumnConfig();
-      }
-      return;
-    }
-  } catch(e) {}
+  // Defaults — Supabase will overwrite on load
   columnConfig = getDefaultColumns();
 }
 
 function saveColumnConfig() {
-  localStorage.setItem('kennion_columns', JSON.stringify(columnConfig));
   supabaseSaveSetting('column_config', columnConfig);
 }
 
 function loadCustomColumnData() {
-  try {
-    const raw = localStorage.getItem('kennion_custom_data');
-    if (raw) customColumnData = JSON.parse(raw);
-  } catch(e) {}
+  // Defaults — Supabase will overwrite on load
 }
 
 function saveCustomColumnData() {
-  localStorage.setItem('kennion_custom_data', JSON.stringify(customColumnData));
   supabaseSaveSetting('custom_column_data', customColumnData);
 }
 
 function loadEnrichmentCache() {
-  try {
-    const raw = localStorage.getItem('kennion_enrichment');
-    if (raw) enrichmentCache = JSON.parse(raw);
-  } catch(e) {}
+  // Defaults — Supabase will overwrite on load
 }
 
 function saveEnrichmentCache() {
-  localStorage.setItem('kennion_enrichment', JSON.stringify(enrichmentCache));
   supabaseSaveSetting('enrichment_cache', enrichmentCache);
 }
 
@@ -1850,14 +1827,10 @@ let contactEnrichment = {}; // { "email": { photo, title, linkedin, photoFailed 
 let companyLogoFailed = {}; // { "domain": true } — tracks failed logo loads
 
 function loadContactEnrichment() {
-  try {
-    const raw = localStorage.getItem('kennion_contact_enrich');
-    if (raw) contactEnrichment = JSON.parse(raw);
-  } catch(e) {}
+  // Defaults — Supabase will overwrite on load
 }
 
 function saveContactEnrichment() {
-  localStorage.setItem('kennion_contact_enrich', JSON.stringify(contactEnrichment));
   supabaseSaveSetting('contact_enrichment', contactEnrichment);
 }
 
@@ -2072,26 +2045,19 @@ document.addEventListener('click', function(e) {
 // STARRED / PRIMARY CONTACTS PERSISTENCE
 // ──────────────────────────────────────────────
 function loadStarredContacts() {
-  try {
-    const raw = localStorage.getItem('relateflow_starred_contacts');
-    starredContacts = raw ? JSON.parse(raw) : {};
-  } catch(e) { starredContacts = {}; }
+  starredContacts = {};
 }
 
 function saveStarredContacts() {
-  localStorage.setItem('relateflow_starred_contacts', JSON.stringify(starredContacts));
   supabaseSaveSetting('starred_contacts', starredContacts);
 }
 
 function loadCompanyTypes() {
-  try {
-    const raw = localStorage.getItem('kennion_company_types');
-    if (raw) companyTypes = JSON.parse(raw);
-  } catch(e) { companyTypes = {}; }
+  companyTypes = {};
 }
 
 function saveCompanyTypes() {
-  localStorage.setItem('kennion_company_types', JSON.stringify(companyTypes));
+  // Data saved via supabaseSaveCompanyField in setCompanyType
 }
 
 function getCompanyType(domain) {
@@ -2138,14 +2104,10 @@ function getPrimaryContact(domain, contacts) {
 // BLOCKED DOMAINS PERSISTENCE (localStorage)
 // ──────────────────────────────────────────────
 function loadBlockedDomains() {
-  try {
-    const raw = localStorage.getItem('relateflow_blocked_domains');
-    blockedDomains = raw ? new Set(JSON.parse(raw)) : new Set();
-  } catch(e) { blockedDomains = new Set(); }
+  blockedDomains = new Set();
 }
 
 function saveBlockedDomains() {
-  localStorage.setItem('relateflow_blocked_domains', JSON.stringify([...blockedDomains]));
   supabaseSaveSetting('blocked_domains', [...blockedDomains]);
 }
 
@@ -2157,13 +2119,9 @@ function isBlockedDomain(domain) {
 // STARRED COMPANIES (Proposals) PERSISTENCE
 // ──────────────────────────────────────────────
 function loadStarredCompanies() {
-  try {
-    const raw = localStorage.getItem('kennion_starred_companies');
-    starredCompanies = raw ? new Set(JSON.parse(raw)) : new Set();
-  } catch(e) { starredCompanies = new Set(); }
+  starredCompanies = new Set();
 }
 function saveStarredCompanies() {
-  localStorage.setItem('kennion_starred_companies', JSON.stringify([...starredCompanies]));
   supabaseSaveSetting('starred_companies', [...starredCompanies]);
   scheduleSupabaseSync();
 }
@@ -2173,24 +2131,16 @@ var proposalNotes = {};   // { domain: "note text" }
 var proposalStages = {};  // { domain: "Proposal Due" | "Proposal Sent" | "Onboarding" }
 
 function loadProposalData() {
-  try {
-    var raw = localStorage.getItem('kennion_proposal_notes');
-    proposalNotes = raw ? JSON.parse(raw) : {};
-  } catch(e) { proposalNotes = {}; }
-  try {
-    var raw2 = localStorage.getItem('kennion_proposal_stages');
-    proposalStages = raw2 ? JSON.parse(raw2) : {};
-  } catch(e) { proposalStages = {}; }
+  proposalNotes = {};
+  proposalStages = {};
 }
 
 function saveProposalNotes() {
-  localStorage.setItem('kennion_proposal_notes', JSON.stringify(proposalNotes));
   supabaseSaveSetting('proposal_notes', proposalNotes);
   scheduleSupabaseSync();
 }
 
 function saveProposalStages() {
-  localStorage.setItem('kennion_proposal_stages', JSON.stringify(proposalStages));
   supabaseSaveSetting('proposal_stages', proposalStages);
   scheduleSupabaseSync();
 }
@@ -2199,22 +2149,14 @@ function saveProposalStages() {
 // FOLLOW UP COMPANIES PERSISTENCE
 // ──────────────────────────────────────────────
 function loadFollowUpData() {
-  try {
-    var raw = localStorage.getItem('kennion_followup_companies');
-    followUpCompanies = raw ? new Set(JSON.parse(raw)) : new Set();
-  } catch(e) { followUpCompanies = new Set(); }
-  try {
-    var raw2 = localStorage.getItem('kennion_followup_dates');
-    followUpDates = raw2 ? JSON.parse(raw2) : {};
-  } catch(e) { followUpDates = {}; }
+  followUpCompanies = new Set();
+  followUpDates = {};
 }
 function saveFollowUpCompanies() {
-  localStorage.setItem('kennion_followup_companies', JSON.stringify([...followUpCompanies]));
   supabaseSaveSetting('followup_companies', [...followUpCompanies]);
   scheduleSupabaseSync();
 }
 function saveFollowUpDates() {
-  localStorage.setItem('kennion_followup_dates', JSON.stringify(followUpDates));
   supabaseSaveSetting('followup_dates', followUpDates);
 }
 
@@ -2222,13 +2164,9 @@ function saveFollowUpDates() {
 // ARCHIVED COMPANIES PERSISTENCE
 // ──────────────────────────────────────────────
 function loadArchivedCompanies() {
-  try {
-    const raw = localStorage.getItem('kennion_archived_companies');
-    archivedCompanies = raw ? new Set(JSON.parse(raw)) : new Set();
-  } catch(e) { archivedCompanies = new Set(); }
+  archivedCompanies = new Set();
 }
 function saveArchivedCompanies() {
-  localStorage.setItem('kennion_archived_companies', JSON.stringify([...archivedCompanies]));
   supabaseSaveSetting('archived_companies', [...archivedCompanies]);
   scheduleSupabaseSync();
 }
@@ -2237,13 +2175,9 @@ function saveArchivedCompanies() {
 // MERGED DOMAINS PERSISTENCE
 // ──────────────────────────────────────────────
 function loadMergedDomains() {
-  try {
-    var raw = localStorage.getItem('kennion_merged_domains');
-    mergedDomains = raw ? JSON.parse(raw) : {};
-  } catch(e) { mergedDomains = {}; }
+  mergedDomains = {};
 }
 function saveMergedDomains() {
-  localStorage.setItem('kennion_merged_domains', JSON.stringify(mergedDomains));
   supabaseSaveSetting('merged_domains', mergedDomains);
   scheduleSupabaseSync();
 }
@@ -2270,13 +2204,9 @@ function getMergedAliases(primaryDomain) {
 // FLAGGED COMPANIES PERSISTENCE (invalid domains)
 // ──────────────────────────────────────────────
 function loadFlaggedCompanies() {
-  try {
-    const raw = localStorage.getItem('kennion_flagged_companies');
-    flaggedCompanies = raw ? new Set(JSON.parse(raw)) : new Set();
-  } catch(e) { flaggedCompanies = new Set(); }
+  flaggedCompanies = new Set();
 }
 function saveFlaggedCompanies() {
-  localStorage.setItem('kennion_flagged_companies', JSON.stringify([...flaggedCompanies]));
   supabaseSaveSetting('flagged_companies', [...flaggedCompanies]);
   scheduleSupabaseSync();
 }
@@ -2344,37 +2274,25 @@ const companyNameCache = {};
 let companyNameCacheDirty = false;
 
 function loadCompanyNameCache() {
-  try {
-    const raw = localStorage.getItem('relateflow_company_names');
-    if (raw) Object.assign(companyNameCache, JSON.parse(raw));
-  } catch(e) {}
+  // Defaults — Supabase will overwrite on load
 }
 
 function saveCompanyNameCache() {
   if (!companyNameCacheDirty) return;
-  try {
-    localStorage.setItem('relateflow_company_names', JSON.stringify(companyNameCache));
-    companyNameCacheDirty = false;
-    supabaseSaveSetting('company_name_cache', companyNameCache);
-  } catch(e) {}
+  companyNameCacheDirty = false;
+  supabaseSaveSetting('company_name_cache', companyNameCache);
 }
 
 // Contact name overrides — manual edits by user persist here
 const contactNameOverrides = {}; // { "email": "Custom Name" }
 let contactNameDirty = false;
 function loadContactNameOverrides() {
-  try {
-    const raw = localStorage.getItem('relateflow_contact_names');
-    if (raw) Object.assign(contactNameOverrides, JSON.parse(raw));
-  } catch(e) {}
+  // Defaults — Supabase will overwrite on load
 }
 function saveContactNameOverrides() {
   if (!contactNameDirty) return;
-  try {
-    localStorage.setItem('relateflow_contact_names', JSON.stringify(contactNameOverrides));
-    contactNameDirty = false;
-    supabaseSaveSetting('contact_name_overrides', contactNameOverrides);
-  } catch(e) {}
+  contactNameDirty = false;
+  supabaseSaveSetting('contact_name_overrides', contactNameOverrides);
 }
 function getContactDisplayName(email, fallback) {
   var le = email.toLowerCase();
@@ -2919,11 +2837,22 @@ async function loadFromSupabase() {
         try {
           const val = typeof s.value === 'string' ? JSON.parse(s.value) : s.value;
           switch (s.key) {
-            case 'column_config': if (val && val.length > 0) columnConfig = val; break;
-            case 'email_signature': if (val) localStorage.setItem('kennion_email_signature', val); break;
-            case 'email_throttle': if (val) localStorage.setItem('kennion_email_throttle', JSON.stringify(val)); break;
-            case 'openai_key': if (val) localStorage.setItem('kennion_openai_key', val); break;
-            case 'client_id': if (val) localStorage.setItem('relateflow_client_id', val); break;
+            case 'column_config':
+              if (val && val.length > 0) {
+                columnConfig = val;
+                // Inject companyType column if missing (added after initial release)
+                if (!columnConfig.find(c => c.id === 'companyType')) {
+                  const statusIdx = columnConfig.findIndex(c => c.id === 'status');
+                  const typeCol = { id: 'companyType', label: 'Type', type: 'builtin', visible: true };
+                  if (statusIdx >= 0) columnConfig.splice(statusIdx + 1, 0, typeCol);
+                  else columnConfig.push(typeCol);
+                }
+              }
+              break;
+            case 'email_signature': if (val) _emailSignature = val; break;
+            case 'email_throttle': if (val) _throttleSettings = val; break;
+            case 'openai_key': if (val) _openaiKey = val; break;
+            case 'client_id': break; // client_id is pre-auth, handled separately
             case 'contact_name_overrides': if (val) Object.assign(contactNameOverrides, val); break;
             case 'company_name_cache': if (val) Object.assign(companyNameCache, val); break;
             // Note: blocked_domains, starred/archived/flagged/followup companies, proposal data,
@@ -3109,22 +3038,8 @@ function applyCompanyChange(row) {
   if (row.custom_data && Object.keys(row.custom_data).length > 0) customColumnData[d] = row.custom_data;
 }
 
-// Cache current metadata to localStorage for instant snapshot
-function cacheMetadataToLocalStorage() {
-  try {
-    localStorage.setItem('kennion_company_types', JSON.stringify(companyTypes));
-    localStorage.setItem('relateflow_blocked_domains', JSON.stringify([...blockedDomains]));
-    localStorage.setItem('kennion_starred_companies', JSON.stringify([...starredCompanies]));
-    localStorage.setItem('kennion_archived_companies', JSON.stringify([...archivedCompanies]));
-    localStorage.setItem('kennion_flagged_companies', JSON.stringify([...flaggedCompanies]));
-    localStorage.setItem('kennion_followup_companies', JSON.stringify([...followUpCompanies]));
-    localStorage.setItem('kennion_followup_dates', JSON.stringify(followUpDates));
-    localStorage.setItem('kennion_merged_domains', JSON.stringify(mergedDomains));
-    localStorage.setItem('relateflow_company_names', JSON.stringify(companyNameCache));
-    localStorage.setItem('kennion_proposal_notes', JSON.stringify(proposalNotes));
-    localStorage.setItem('kennion_proposal_stages', JSON.stringify(proposalStages));
-  } catch(e) {}
-}
+// cacheMetadataToLocalStorage removed — Supabase is sole source of truth
+function cacheMetadataToLocalStorage() { /* no-op */ }
 
 // ── SUPABASE REALTIME: instant cross-device sync via WebSocket ──
 function startRealtimeSubscription() {
@@ -4260,62 +4175,9 @@ async function onSignedIn() {
   document.getElementById('userName').textContent = userEmail;
   document.getElementById('settingsNavItem').style.display = '';
 
-  // Snapshot was already rendered in init() — now load full data
-  let hasData = companies.length > 0; // true if snapshot rendered
+  // Supabase is the sole source of truth — load from database first
+  let hasData = false;
   let cloudOnlyRestore = false;
-  let renderedFromCache = hasData;
-
-  // Load full domainMap from IndexedDB (needed for email scanning, contacts, etc.)
-  const cached = await loadPersistedData();
-  const hasLocalData = cached && cached.domainMap && Object.keys(cached.domainMap).length > 0;
-  if (hasLocalData) {
-    domainMap = cached.domainMap;
-    lastScanTime = cached.lastScanTime;
-    fullScanDone = cached.fullScanDone || false;
-    deltaLink = cached.deltaLink || null;
-    if (cached.seenMsgIds && cached.seenMsgIds.size > 0) {
-      seenMsgIds = cached.seenMsgIds;
-    } else {
-      seenMsgIds = new Set();
-      deltaLink = null;
-      fullScanDone = false;
-    }
-    if (!deltaLink && fullScanDone) {
-      seenMsgIds = new Set();
-      for (const d of Object.values(domainMap)) {
-        if (d.sentIds instanceof Set) d.sentIds.clear(); else d.sentIds = new Set();
-        if (d.receivedIds instanceof Set) d.receivedIds.clear(); else d.receivedIds = new Set();
-        for (const c of Object.values(d.contacts)) {
-          if (c.sentIds instanceof Set) c.sentIds.clear(); else c.sentIds = new Set();
-          if (c.receivedIds instanceof Set) c.receivedIds.clear(); else c.receivedIds = new Set();
-        }
-      }
-      fullScanDone = false;
-    }
-    const needsSetUpgrade = Object.values(domainMap).some(d => !(d.sentIds instanceof Set));
-    if (needsSetUpgrade) {
-      for (const d of Object.values(domainMap)) {
-        if (!(d.sentIds instanceof Set)) d.sentIds = new Set();
-        if (!(d.receivedIds instanceof Set)) d.receivedIds = new Set();
-        for (const c of Object.values(d.contacts)) {
-          if (!(c.sentIds instanceof Set)) c.sentIds = new Set();
-          if (!(c.receivedIds instanceof Set)) c.receivedIds = new Set();
-        }
-      }
-      fullScanDone = false;
-      deltaLink = null;
-    }
-    if (!renderedFromCache) {
-      // No snapshot existed — render from IndexedDB (still faster than network)
-      buildCompaniesFromDomainMap();
-      renderTableHeader();
-      renderTable();
-      updateStats();
-    }
-    hasData = true;
-    renderedFromCache = true;
-    console.log('Startup: domainMap loaded from IndexedDB — ' + Object.keys(domainMap).length + ' domains');
-  }
 
   // ── SUPABASE: Initialize and register user (network) ──
   if (initSupabase()) {
@@ -4323,9 +4185,7 @@ async function onSignedIn() {
     await supabaseEnsureUser(msId, userEmail, currentAccount.name || userEmail);
   }
 
-  // Step 1: Load latest from Supabase (source of truth)
-  // NOTE: Do NOT clear state before loading — snapshot is already displayed.
-  // loadFromSupabase() populates metadata directly via applyCompanyChange pattern.
+  // Step 1: Load ALL data from Supabase (sole source of truth)
   if (supabaseReady && supabaseUserId) {
     try {
       const sbData = await loadFromSupabase();
@@ -4344,11 +4204,7 @@ async function onSignedIn() {
         hasData = true;
         // Re-apply pending local edits over Supabase data
         reapplyPendingEdits();
-        // Cache to localStorage for next instant load
-        cacheMetadataToLocalStorage();
-        localStorage.setItem('kennion_columns', JSON.stringify(columnConfig));
-        localStorage.setItem('relateflow_contact_names', JSON.stringify(contactNameOverrides));
-        // Silently update UI with fresh data
+        // Render UI with fresh data from database
         buildCompaniesFromDomainMap();
         renderTableHeader();
         renderTable();
@@ -4356,26 +4212,67 @@ async function onSignedIn() {
         updateLastSyncDisplay();
         resolveCompanyNames();
         runEnrichment();
-        persistData();
+        persistData(); // cache to IndexedDB for email scanning support
         updateSupabaseBadge('success');
-        console.log('Startup: updated from Supabase — ' + Object.keys(domainMap).length + ' domains');
-      } else if (renderedFromCache) {
-        // Supabase had no data but we showed cache — sync cache up to Supabase
-        scheduleSupabaseSync();
-        resolveCompanyNames();
-        runEnrichment();
+        console.log('Startup: loaded from Supabase — ' + Object.keys(domainMap).length + ' domains');
       }
     } catch(e) {
-      console.warn('Startup: Supabase load failed, using cached data:', e);
-      if (renderedFromCache) {
-        resolveCompanyNames();
-        runEnrichment();
-      }
+      console.warn('Startup: Supabase load failed:', e);
     }
-  } else if (renderedFromCache) {
-    // No Supabase — just enrich the cached data
-    resolveCompanyNames();
-    runEnrichment();
+  }
+
+  // Step 2: If Supabase had no data, fall back to IndexedDB (for email scanning metadata)
+  if (!hasData) {
+    const cached = await loadPersistedData();
+    const hasLocalData = cached && cached.domainMap && Object.keys(cached.domainMap).length > 0;
+    if (hasLocalData) {
+      domainMap = cached.domainMap;
+      lastScanTime = cached.lastScanTime;
+      fullScanDone = cached.fullScanDone || false;
+      deltaLink = cached.deltaLink || null;
+      if (cached.seenMsgIds && cached.seenMsgIds.size > 0) {
+        seenMsgIds = cached.seenMsgIds;
+      } else {
+        seenMsgIds = new Set();
+        deltaLink = null;
+        fullScanDone = false;
+      }
+      if (!deltaLink && fullScanDone) {
+        seenMsgIds = new Set();
+        for (const d of Object.values(domainMap)) {
+          if (d.sentIds instanceof Set) d.sentIds.clear(); else d.sentIds = new Set();
+          if (d.receivedIds instanceof Set) d.receivedIds.clear(); else d.receivedIds = new Set();
+          for (const c of Object.values(d.contacts)) {
+            if (c.sentIds instanceof Set) c.sentIds.clear(); else c.sentIds = new Set();
+            if (c.receivedIds instanceof Set) c.receivedIds.clear(); else c.receivedIds = new Set();
+          }
+        }
+        fullScanDone = false;
+      }
+      const needsSetUpgrade = Object.values(domainMap).some(d => !(d.sentIds instanceof Set));
+      if (needsSetUpgrade) {
+        for (const d of Object.values(domainMap)) {
+          if (!(d.sentIds instanceof Set)) d.sentIds = new Set();
+          if (!(d.receivedIds instanceof Set)) d.receivedIds = new Set();
+          for (const c of Object.values(d.contacts)) {
+            if (!(c.sentIds instanceof Set)) c.sentIds = new Set();
+            if (!(c.receivedIds instanceof Set)) c.receivedIds = new Set();
+          }
+        }
+        fullScanDone = false;
+        deltaLink = null;
+      }
+      buildCompaniesFromDomainMap();
+      renderTableHeader();
+      renderTable();
+      updateStats();
+      hasData = true;
+      // Sync IndexedDB data up to Supabase
+      scheduleSupabaseSync();
+      resolveCompanyNames();
+      runEnrichment();
+      console.log('Startup: fell back to IndexedDB — ' + Object.keys(domainMap).length + ' domains');
+    }
   }
 
   // OneDrive cloud merge removed — Supabase is now the source of truth
@@ -4856,40 +4753,10 @@ function updateTypeCounts() {
   updateStats();
 }
 
-// ── INSTANT SNAPSHOT: save compact company list to localStorage for zero-delay render ──
-// Big apps (Salesforce, HubSpot) render from a local cache instantly, then refresh in background.
-// We save a lightweight snapshot of the companies array (no allContacts, no Sets) so init()
-// can render the table and stats synchronously — before any async work.
-function saveInstantSnapshot() {
-  try {
-    if (companies.length === 0) return;
-    const snap = companies.map(c => ({
-      domain: c.domain, name: c.name, contact: c.contact, contactEmail: c.contactEmail,
-      sent: c.sent, received: c.received, status: c.status, score: c.score,
-      lastDate: c.lastDate ? c.lastDate.toISOString() : null,
-      lastActivity: c.lastActivity, mergedAliases: c.mergedAliases || null,
-    }));
-    localStorage.setItem('kennion_snapshot', JSON.stringify(snap));
-    localStorage.setItem('kennion_snapshot_ts', Date.now().toString());
-  } catch(e) { /* quota exceeded — not critical */ }
-}
-
-function loadInstantSnapshot() {
-  try {
-    const raw = localStorage.getItem('kennion_snapshot');
-    if (!raw) return false;
-    const snap = JSON.parse(raw);
-    if (!snap || snap.length === 0) return false;
-    companies = snap.map((c, i) => ({
-      id: i + 1, domain: c.domain, name: c.name, contact: c.contact,
-      contactEmail: c.contactEmail, sent: c.sent, received: c.received,
-      status: c.status, score: c.score,
-      lastDate: c.lastDate ? new Date(c.lastDate) : null,
-      lastActivity: c.lastActivity, allContacts: [], mergedAliases: c.mergedAliases,
-    }));
-    return true;
-  } catch(e) { return false; }
-}
+// Snapshot removed — Supabase is the sole source of truth.
+// No more localStorage snapshots; data loads directly from the database.
+function saveInstantSnapshot() { /* no-op: Supabase is source of truth */ }
+function loadInstantSnapshot() { return false; /* no-op: Supabase is source of truth */ }
 
 function setViewTitle(title, showDashboard) {
   var bar = document.getElementById('viewTitleBar');
@@ -8338,25 +8205,25 @@ async function sendComposedEmail() {
 // ──────────────────────────────────────────────
 // SETTINGS
 // ──────────────────────────────────────────────
+let _emailSignature = '';
 function getEmailSignature() {
-  return localStorage.getItem('kennion_email_signature') || '';
+  return _emailSignature || '';
 }
 
 function saveEmailSignature(sig) {
-  localStorage.setItem('kennion_email_signature', sig);
+  _emailSignature = sig;
   supabaseSaveSetting('email_signature', sig);
 }
 
 // ── EMAIL THROTTLE ──
+let _throttleSettings = { perHour: 0, perDay: 0, delaySec: 0 };
 function getThrottleSettings() {
-  try {
-    var raw = localStorage.getItem('kennion_email_throttle');
-    return raw ? JSON.parse(raw) : { perHour: 0, perDay: 0, delaySec: 0 };
-  } catch(e) { return { perHour: 0, perDay: 0, delaySec: 0 }; }
+  return _throttleSettings || { perHour: 0, perDay: 0, delaySec: 0 };
 }
 
 function saveThrottleSettingsToStorage(settings) {
-  localStorage.setItem('kennion_email_throttle', JSON.stringify(settings));
+  _throttleSettings = settings;
+  supabaseSaveSetting('email_throttle', settings);
   scheduleSupabaseSync();
 }
 
@@ -9147,19 +9014,22 @@ let aiChatOpen = false;
 let aiConversation = []; // message history for context
 let aiStreaming = false;
 
-function getOpenAIKey() { return localStorage.getItem('kennion_openai_key') || ''; }
+let _openaiKey = '';
+function getOpenAIKey() { return _openaiKey || ''; }
 function getAIKey() { return getOpenAIKey(); }
 function getEffectiveProvider() { return 'openai'; }
 function saveOpenAIKey() {
   var input = document.getElementById('settingsOpenAIKey');
   var key = input.value.trim();
   if (!key) return;
-  localStorage.setItem('kennion_openai_key', key);
+  _openaiKey = key;
+  supabaseSaveSetting('openai_key', key);
   input.value = '';
   loadAISettings();
 }
 function removeOpenAIKey() {
-  localStorage.removeItem('kennion_openai_key');
+  _openaiKey = '';
+  supabaseSaveSetting('openai_key', '');
   loadAISettings();
 }
 function _connectedBadge() { return '<span style="display:inline-flex;align-items:center;gap:4px;color:#34a853"><span style="width:6px;height:6px;border-radius:50%;background:#34a853;display:inline-block"></span>Connected</span>'; }
@@ -9167,16 +9037,6 @@ function _disconnectedBadge() { return '<span style="color:var(--text3)">Not con
 function loadAISettings() {
   var oStatus = document.getElementById('aiOpenAIStatus');
   if (oStatus) oStatus.innerHTML = getOpenAIKey() ? _connectedBadge() : _disconnectedBadge();
-  // Migrate old keys to OpenAI key
-  if (!getOpenAIKey()) {
-    var old = localStorage.getItem('kennion_ai_key') || localStorage.getItem('kennion_anthropic_key');
-    if (old) {
-      localStorage.setItem('kennion_openai_key', old);
-      localStorage.removeItem('kennion_ai_key');
-      localStorage.removeItem('kennion_anthropic_key');
-      loadAISettings();
-    }
-  }
 }
 
 function updateAIChatSubtitle() {
@@ -9721,7 +9581,7 @@ async function aiPopulateCompany(domain) {
       if (result.founded && !ec.founded) ec.founded = result.founded;
       if (result.type && !ec.type) ec.type = result.type;
       if (result.description) ec.description = result.description;
-      localStorage.setItem('kennion_enrichment', JSON.stringify(enrichmentCache));
+      saveEnrichmentCache();
       // Update contact titles
       if (result.contacts) {
         for (var email in result.contacts) {
@@ -9830,21 +9690,8 @@ function esc(text) {
   loadLogoFailedCache();
   renderTableHeader();
 
-  // ── INSTANT RENDER: zero-delay from localStorage snapshot ──
-  // This is synchronous — no network, no IndexedDB, no awaits.
-  // Data appears before the browser even finishes parsing the rest of the page.
-  if (getClientId() && loadInstantSnapshot()) {
-    document.getElementById('authLoading').style.display = 'none';
-    document.getElementById('welcomeScreen').style.display = 'none';
-    document.getElementById('crmContent').classList.add('active');
-    setViewTitle('All Companies', true);
-    const sbInit = document.getElementById('sidebar');
-    sbInit.style.display = 'flex';
-    if (localStorage.getItem('relateflow_sidebar') === 'collapsed') sbInit.classList.add('collapsed');
-    renderTable();
-    updateStats();
-    console.log('Startup: instant render from snapshot — ' + companies.length + ' companies');
-  }
+  // No localStorage snapshot — Supabase is the sole source of truth.
+  // Data will load from the database after sign-in.
 
   if (getClientId()) {
     await initMSAL();
@@ -9858,8 +9705,7 @@ function esc(text) {
       }
     }
   }
-  // MSAL failed or no session — if snapshot already rendered, just show offline banner.
-  // Otherwise try IndexedDB as fallback.
+  // MSAL failed or no session — try IndexedDB as offline fallback.
   const alreadyRendered = companies.length > 0;
   if (!alreadyRendered) {
     const cachedData = await loadPersistedData();
