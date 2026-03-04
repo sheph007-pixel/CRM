@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Kennion CRM</title>
+<link rel="preconnect" href="https://hkfdapvulzpnrwcgxyrx.supabase.co" crossorigin>
+<link rel="dns-prefetch" href="https://hkfdapvulzpnrwcgxyrx.supabase.co">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <!-- MSAL loaded dynamically in initMSAL() with CDN fallbacks -->
 <style>
@@ -2472,11 +2474,21 @@ function getSupabaseConfig() {
   return { url: SUPABASE_URL, key: SUPABASE_ANON_KEY };
 }
 
+// ── EARLY WARMUP: wake Supabase immediately on script load ──
+// Free-tier databases sleep after inactivity. This fetch fires as soon as
+// the JS parses — well before MSAL auth finishes — so the DB is awake when needed.
+try {
+  fetch(SUPABASE_URL + '/rest/v1/users?select=id&limit=1', {
+    headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY }
+  }).then(() => console.log('Supabase: early warmup complete')).catch(() => {});
+} catch(e) {}
+
 function saveSupabaseConfig(url, key) {
   // Config is hardcoded — no local storage needed
 }
 
 function initSupabase() {
+  if (supabaseReady && supabaseClient) return true; // already initialized
   const { url, key } = getSupabaseConfig();
   if (!url || !key) {
     supabaseReady = false;
@@ -9568,16 +9580,6 @@ function esc(text) {
   loadContactEnrichment();
   loadLogoFailedCache();
   renderTableHeader();
-
-  // Warm up Supabase NOW (fires during MSAL init so DB wakes up in parallel)
-  // Free-tier Supabase databases sleep after inactivity — this ping wakes them.
-  try {
-    if (initSupabase()) {
-      supabaseClient.from('users').select('id').limit(1).maybeSingle().then(() => {
-        console.log('Supabase: warmup ping complete');
-      }).catch(() => {});
-    }
-  } catch(e) {}
 
   // Safety timeout — if MSAL loading takes too long, show welcome screen
   let welcomed = false;
