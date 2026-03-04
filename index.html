@@ -2345,11 +2345,110 @@ async function lookupCompanyName(domain) {
 // ──────────────────────────────────────────────
 // INDEXEDDB PERSISTENCE
 // ──────────────────────────────────────────────
-// IndexedDB removed — Supabase is the sole source of truth.
-// All data lives in the cloud database, nothing stored locally.
-function persistData() { /* no-op: all data in Supabase */ }
-function loadPersistedData() { return null; /* no-op */ }
-function clearPersistedData() { /* no-op */ }
+// ── LOCAL CACHE (localStorage) for instant startup ──
+// Supabase is still the source of truth, but we cache locally so the UI
+// renders immediately on page load without waiting for the network.
+const LOCAL_CACHE_KEY = 'kennion_cache_v1';
+
+function saveLocalCache() {
+  try {
+    // Serialize domainMap to a compact format (skip Sets, only store counts/dates/flags)
+    const cached = {};
+    for (const [domain, d] of Object.entries(domainMap)) {
+      const contacts = {};
+      for (const [email, ct] of Object.entries(d.contacts || {})) {
+        contacts[email] = {
+          name: ct.name, email: ct.email,
+          sent: ct._dbSentCount || ct.sentIds?.size || 0,
+          received: ct._dbReceivedCount || ct.receivedIds?.size || 0,
+          lastDate: ct.lastDate ? ct.lastDate.toISOString() : null,
+        };
+      }
+      cached[domain] = {
+        contacts: contacts,
+        sent: d._dbSentCount || d.sentIds?.size || 0,
+        received: d._dbReceivedCount || d.receivedIds?.size || 0,
+        lastDate: d.lastDate ? d.lastDate.toISOString() : null,
+        lastSentDate: d.lastSentDate ? d.lastSentDate.toISOString() : null,
+        lastReceivedDate: d.lastReceivedDate ? d.lastReceivedDate.toISOString() : null,
+        _fromDb: true,
+        is_starred: d.is_starred || false,
+        is_blocked: d.is_blocked || false,
+        is_flagged: d.is_flagged || false,
+        is_followup: d.is_followup || false,
+        is_archived: d.is_archived || false,
+        company_type: d.company_type || null,
+        proposal_stage: d.proposal_stage || null,
+        proposal_notes: d.proposal_notes || null,
+        followup_date: d.followup_date || null,
+        merged_into: d.merged_into || null,
+      };
+    }
+    const payload = JSON.stringify({
+      domainMap: cached,
+      companyNameCache: companyNameCache,
+      fullScanDone: fullScanDone,
+      lastScanTime: lastScanTime ? lastScanTime.toISOString() : null,
+      savedAt: new Date().toISOString(),
+    });
+    localStorage.setItem(LOCAL_CACHE_KEY, payload);
+  } catch(e) { /* localStorage full or unavailable — not critical */ }
+}
+
+function loadLocalCache() {
+  try {
+    const raw = localStorage.getItem(LOCAL_CACHE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || !data.domainMap) return null;
+    // Reconstruct domainMap with proper types
+    const dm = {};
+    for (const [domain, d] of Object.entries(data.domainMap)) {
+      const contacts = {};
+      for (const [email, ct] of Object.entries(d.contacts || {})) {
+        contacts[email] = {
+          name: ct.name, email: ct.email,
+          sentIds: new Set(), receivedIds: new Set(),
+          lastDate: ct.lastDate ? new Date(ct.lastDate) : null,
+          _dbSentCount: ct.sent || 0, _dbReceivedCount: ct.received || 0,
+        };
+      }
+      dm[domain] = {
+        contacts: contacts,
+        sentIds: new Set(), receivedIds: new Set(),
+        lastDate: d.lastDate ? new Date(d.lastDate) : null,
+        lastSentDate: d.lastSentDate ? new Date(d.lastSentDate) : null,
+        lastReceivedDate: d.lastReceivedDate ? new Date(d.lastReceivedDate) : null,
+        _fromDb: true,
+        _dbSentCount: d.sent || 0, _dbReceivedCount: d.received || 0,
+        is_starred: d.is_starred || false,
+        is_blocked: d.is_blocked || false,
+        is_flagged: d.is_flagged || false,
+        is_followup: d.is_followup || false,
+        is_archived: d.is_archived || false,
+        company_type: d.company_type || null,
+        proposal_stage: d.proposal_stage || null,
+        proposal_notes: d.proposal_notes || null,
+        followup_date: d.followup_date || null,
+        merged_into: d.merged_into || null,
+      };
+    }
+    if (data.companyNameCache) Object.assign(companyNameCache, data.companyNameCache);
+    return {
+      domainMap: dm,
+      fullScanDone: data.fullScanDone || false,
+      lastScanTime: data.lastScanTime ? new Date(data.lastScanTime) : null,
+    };
+  } catch(e) { return null; }
+}
+
+function clearLocalCache() {
+  try { localStorage.removeItem(LOCAL_CACHE_KEY); } catch(e) {}
+}
+
+function persistData() { saveLocalCache(); }
+function loadPersistedData() { return loadLocalCache(); }
+function clearPersistedData() { clearLocalCache(); }
 
 // ──────────────────────────────────────────────
 // SUPABASE DATABASE LAYER
@@ -2553,6 +2652,8 @@ async function syncToSupabase() {
     const elapsed = ((Date.now() - syncStart) / 1000).toFixed(1);
     console.log('Supabase: synced ' + companyRows.length + ' companies, ' + contactRows.length + ' contacts in ' + elapsed + 's');
     updateSupabaseBadge('success');
+    // Update local cache after successful sync
+    saveLocalCache();
   } catch(e) {
     console.warn('Supabase: sync error:', e);
     updateSupabaseBadge('error');
@@ -3066,6 +3167,7 @@ function signOut() {
   fullScanDone = false;
   isScanning = false;
   stopAutoSync();
+  clearLocalCache();
   document.getElementById('accountBar').style.display = 'none';
   showWelcome();
 }
@@ -4011,74 +4113,90 @@ async function onSignedIn() {
   document.getElementById('globalSearchWrap').style.display = '';
   document.getElementById('aiFab').classList.remove('hidden');
 
-  // Supabase is the sole source of truth — load from database first
+  // ── STEP 1: INSTANT RENDER FROM LOCAL CACHE ──
+  // Show cached data immediately (no network wait). Supabase syncs in background.
   let hasData = false;
   let cloudOnlyRestore = false;
-
-  // Show loading indicator while data loads
-  var loadingOverlay = document.getElementById('tableLoadingOverlay');
-  if (loadingOverlay) { loadingOverlay.style.display = ''; document.querySelector('.table-wrap').style.display = 'none'; }
-
-  // ── SUPABASE: Initialize and register user (network) ──
   const startupTime = Date.now();
+  var loadingOverlay = document.getElementById('tableLoadingOverlay');
+
+  const cached = loadLocalCache();
+  if (cached && cached.domainMap && Object.keys(cached.domainMap).length > 0) {
+    domainMap = cached.domainMap;
+    fullScanDone = cached.fullScanDone || false;
+    lastScanTime = cached.lastScanTime || null;
+    hasData = true;
+    buildCompaniesFromDomainMap();
+    renderTableHeader();
+    renderTable();
+    updateStats();
+    updateLastSyncDisplay();
+    console.log('Startup: rendered ' + companies.length + ' companies from local cache in ' + (Date.now() - startupTime) + 'ms');
+  } else {
+    // No cache — show loading spinner while we fetch from Supabase
+    if (loadingOverlay) { loadingOverlay.style.display = ''; document.querySelector('.table-wrap').style.display = 'none'; }
+  }
+
+  // ── STEP 2: SUPABASE SYNC (background if cache existed) ──
   if (initSupabase()) {
     const msId = currentAccount.homeAccountId || currentAccount.localAccountId || currentAccount.username;
     await supabaseEnsureUser(msId, userEmail, currentAccount.name || userEmail);
-    console.log('Startup: Supabase user registered in ' + (Date.now() - startupTime) + 'ms');
   }
 
-  // Step 1: Load ALL data from Supabase (sole source of truth)
   if (supabaseReady && supabaseUserId) {
-    try {
-      if (loadingOverlay) document.getElementById('tableLoadingMsg').textContent = 'Loading companies & contacts...';
-      const sbData = await loadFromSupabase();
-      if (sbData && sbData.domainMap && Object.keys(sbData.domainMap).length > 0) {
-        domainMap = sbData.domainMap;
-        if (sbData.scanMeta) {
-          lastScanTime = sbData.scanMeta.lastScanTime;
-          fullScanDone = sbData.scanMeta.fullScanDone || false;
-          deltaLink = sbData.scanMeta.deltaLink || null;
+    // If we already rendered from cache, sync in background (non-blocking)
+    const doSupabaseSync = async () => {
+      try {
+        const sbData = await loadFromSupabase();
+        if (sbData && sbData.domainMap && Object.keys(sbData.domainMap).length > 0) {
+          domainMap = sbData.domainMap;
+          if (sbData.scanMeta) {
+            lastScanTime = sbData.scanMeta.lastScanTime;
+            fullScanDone = sbData.scanMeta.fullScanDone || false;
+            deltaLink = sbData.scanMeta.deltaLink || null;
+          }
+          seenMsgIds = new Set();
+          hasData = true;
+          buildCompaniesFromDomainMap();
+          renderTableHeader();
+          renderTable();
+          updateStats();
+          updateLastSyncDisplay();
+          // Save fresh data to local cache for next startup
+          saveLocalCache();
+          // Load enrichment in background
+          if (sbData.loadEnrichment) {
+            sbData.loadEnrichment().then(() => { renderTable(); saveLocalCache(); });
+          }
+          resolveCompanyNames();
+          updateSupabaseBadge('success');
+          console.log('Startup: Supabase sync complete — ' + Object.keys(domainMap).length + ' domains in ' + (Date.now() - startupTime) + 'ms');
         }
-        seenMsgIds = new Set();
-        for (const d of Object.values(domainMap)) {
-          for (const id of d.sentIds) seenMsgIds.add(id);
-          for (const id of d.receivedIds) seenMsgIds.add(id);
-        }
-        hasData = true;
-        // Re-apply pending local edits over Supabase data
-        reapplyPendingEdits();
-        // Render UI with fresh data from database
-        buildCompaniesFromDomainMap();
-        renderTableHeader();
-        renderTable();
-        updateStats();
-        updateLastSyncDisplay();
-        // Hide loading overlay, show table
-        if (loadingOverlay) { loadingOverlay.style.display = 'none'; document.querySelector('.table-wrap').style.display = ''; }
-        // Load enrichment/custom data in background (doesn't block table render)
-        if (sbData.loadEnrichment) {
-          sbData.loadEnrichment().then(() => { renderTable(); });
-        }
-        resolveCompanyNames();
-        // Data persisted to Supabase via syncToSupabase
-        updateSupabaseBadge('success');
-        console.log('Startup: loaded from Supabase — ' + Object.keys(domainMap).length + ' domains, ' + companies.length + ' companies rendered in ' + (Date.now() - startupTime) + 'ms');
+      } catch(e) {
+        console.warn('Startup: Supabase sync failed (using cache):', e);
       }
-    } catch(e) {
-      console.warn('Startup: Supabase load failed:', e);
+      // Hide loading overlay if it was showing
+      if (loadingOverlay && loadingOverlay.style.display !== 'none') {
+        loadingOverlay.style.display = 'none';
+        document.querySelector('.table-wrap').style.display = '';
+      }
+    };
+
+    if (hasData) {
+      // Already rendered from cache — sync quietly in background
+      doSupabaseSync();
+    } else {
+      // No cache — must wait for Supabase
+      if (loadingOverlay) document.getElementById('tableLoadingMsg').textContent = 'Loading companies & contacts...';
+      await doSupabaseSync();
+    }
+  } else {
+    // Supabase not available — hide overlay if showing
+    if (loadingOverlay && loadingOverlay.style.display !== 'none') {
+      loadingOverlay.style.display = 'none';
+      document.querySelector('.table-wrap').style.display = '';
     }
   }
-
-  // Ensure loading overlay is hidden even if no data was loaded
-  if (loadingOverlay && loadingOverlay.style.display !== 'none') {
-    loadingOverlay.style.display = 'none';
-    document.querySelector('.table-wrap').style.display = '';
-  }
-
-  // No local fallback — Supabase is the sole source of truth.
-  // If no data in Supabase, email scan will populate it.
-
-  // OneDrive cloud merge removed — Supabase is now the source of truth
 
   updateBlockedCount();
   updateFlaggedCount();
