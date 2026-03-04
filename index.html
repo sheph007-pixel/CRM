@@ -2729,8 +2729,7 @@ async function loadFromSupabase() {
       }
     }
 
-    // Apply settings
-    const settingsData = settingsResult.data;
+    // Apply settings (settingsData already destructured above)
     if (settingsData) {
       for (const s of settingsData) {
         try {
@@ -2763,8 +2762,7 @@ async function loadFromSupabase() {
       }
     }
 
-    // Scan metadata
-    const scanData = scanResult.data;
+    // Scan metadata (scanData already destructured above)
     let scanMeta = null;
     if (scanData) {
       scanMeta = {
