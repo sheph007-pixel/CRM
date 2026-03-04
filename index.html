@@ -3064,6 +3064,7 @@ async function refreshFromSupabase() {
       updateLastSyncDisplay();
       updateSupabaseBadge('success');
       cacheMetadataToLocalStorage();
+      saveLocalCache();
     }
     lastRefreshTime = Date.now();
   } catch(e) {
@@ -4189,21 +4190,70 @@ async function onSignedIn(cacheRendered) {
       if (!supabaseUserId) return;
       const sbData = await loadFromSupabase();
       if (sbData && sbData.domainMap && Object.keys(sbData.domainMap).length > 0) {
-        domainMap = sbData.domainMap;
         if (sbData.scanMeta) {
           lastScanTime = sbData.scanMeta.lastScanTime;
           fullScanDone = sbData.scanMeta.fullScanDone || false;
           deltaLink = sbData.scanMeta.deltaLink || null;
         }
         seenMsgIds = new Set();
-        hasData = true;
-        buildCompaniesFromDomainMap();
-        renderTableHeader();
-        renderTable();
-        updateStats();
-        updateLastSyncDisplay();
-        saveLocalCache();
-        resolveCompanyNames();
+
+        if (hasData) {
+          // ── SMART MERGE: only update what actually changed ──
+          // Compare Supabase data with cached domainMap. Only re-render if different.
+          const sbDomains = Object.keys(sbData.domainMap);
+          const cachedDomains = Object.keys(domainMap);
+          let changed = sbDomains.length !== cachedDomains.length;
+
+          if (!changed) {
+            // Quick check: compare domain count, key flags, and counts
+            for (const domain of sbDomains) {
+              const sb = sbData.domainMap[domain];
+              const cached = domainMap[domain];
+              if (!cached) { changed = true; break; }
+              // Check if any visible fields differ
+              if ((sb._dbSentCount || 0) !== (cached._dbSentCount || 0) ||
+                  (sb._dbReceivedCount || 0) !== (cached._dbReceivedCount || 0) ||
+                  !!sb.is_starred !== !!cached.is_starred ||
+                  !!sb.is_flagged !== !!cached.is_flagged ||
+                  !!sb.is_archived !== !!cached.is_archived ||
+                  !!sb.is_blocked !== !!cached.is_blocked ||
+                  !!sb.is_followup !== !!cached.is_followup ||
+                  (sb.company_type || '') !== (cached.company_type || '') ||
+                  (sb.proposal_stage || '') !== (cached.proposal_stage || '') ||
+                  (sb.merged_into || '') !== (cached.merged_into || '') ||
+                  Object.keys(sb.contacts || {}).length !== Object.keys(cached.contacts || {}).length) {
+                changed = true; break;
+              }
+            }
+          }
+
+          // Always update domainMap with authoritative Supabase data
+          domainMap = sbData.domainMap;
+          saveLocalCache();
+
+          if (changed) {
+            console.log('Startup: Supabase data differs from cache — updating UI');
+            buildCompaniesFromDomainMap();
+            renderTableHeader();
+            renderTable();
+            updateStats();
+            updateLastSyncDisplay();
+            resolveCompanyNames();
+          } else {
+            console.log('Startup: Supabase data matches cache — no re-render needed');
+          }
+        } else {
+          // No cache — full render
+          domainMap = sbData.domainMap;
+          hasData = true;
+          buildCompaniesFromDomainMap();
+          renderTableHeader();
+          renderTable();
+          updateStats();
+          updateLastSyncDisplay();
+          saveLocalCache();
+          resolveCompanyNames();
+        }
         updateSupabaseBadge('success');
         console.log('Startup: Supabase sync done — ' + Object.keys(domainMap).length + ' domains in ' + (Date.now() - startupTime) + 'ms');
       }
