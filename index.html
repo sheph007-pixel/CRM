@@ -3299,6 +3299,12 @@ function getDomain(email) {
   return d ? d.toLowerCase() : null;
 }
 
+// Display domain with www. prefix for user-facing display
+function displayDomain(domain) {
+  if (!domain) return '';
+  return domain.startsWith('www.') ? domain : 'www.' + domain;
+}
+
 function ensureDomain(domain) {
   if (!domainMap[domain]) {
     domainMap[domain] = { contacts: {}, sentIds: new Set(), receivedIds: new Set(), lastDate: null, lastSentDate: null, lastReceivedDate: null };
@@ -4407,7 +4413,7 @@ function buildCellHTML(col, c, color) {
         return '<div class="company-cell">' +
           '<button class="row-star' + (isStarred ? ' active' : '') + '" onclick="event.stopPropagation();toggleCompanyStar(\'' + starDSafe + '\')" title="' + (isStarred ? 'Remove from Proposals' : 'Add to Proposals') + '">&#9733;</button>' +
           '<button class="row-flag' + (isFollowUp ? ' active' : '') + '" onclick="event.stopPropagation();toggleFollowUp(\'' + starDSafe + '\')" title="' + (isFollowUp ? 'Remove from Follow Up' : 'Flag for Follow Up') + '"><svg viewBox="0 0 24 24" fill="' + (isFollowUp ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></button>' +
-          '<div class="company-logo" style="background:' + color + '">' + companyLogoHTML(c.domain, color, c.name) + '</div><div class="company-info"><span class="company-name">' + esc(c.name) + mergeIndicator + '</span><span class="company-domain">' + esc(c.domain) + (c.mergedAliases && c.mergedAliases.length > 0 ? ', ' + c.mergedAliases.join(', ') : '') + '</span></div></div>';
+          '<div class="company-logo" style="background:' + color + '">' + companyLogoHTML(c.domain, color, c.name) + '</div><div class="company-info"><span class="company-name">' + esc(c.name) + mergeIndicator + '</span><span class="company-domain">' + esc(displayDomain(c.domain)) + (c.mergedAliases && c.mergedAliases.length > 0 ? ', ' + c.mergedAliases.map(displayDomain).join(', ') : '') + '</span></div></div>';
       case 'contact':
         var initials = c.contact ? c.contact.split(' ').map(function(n){return n[0]}).join('').substring(0,2) : '';
         var ctTitle = getContactTitle(c.contactEmail || '');
@@ -4564,7 +4570,7 @@ function renderProposalsTable() {
         + '<button class="row-star' + (isStarred ? ' active' : '') + '" onclick="event.stopPropagation();toggleCompanyStar(\'' + dSafe + '\')" title="Remove from Proposals">&#9733;</button>'
         + '<button class="row-flag' + (isFollowUpP ? ' active' : '') + '" onclick="event.stopPropagation();toggleFollowUp(\'' + dSafe + '\')" title="' + (isFollowUpP ? 'Remove from Follow Up' : 'Flag for Follow Up') + '"><svg viewBox="0 0 24 24" fill="' + (isFollowUpP ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></button>'
         + '<div class="company-logo" style="background:' + color + '">' + companyLogoHTML(c.domain, color, c.name) + '</div>'
-        + '<div class="company-info"><span class="company-name">' + esc(c.name) + '</span><span class="company-domain">' + esc(c.domain) + '</span></div>'
+        + '<div class="company-info"><span class="company-name">' + esc(c.name) + '</span><span class="company-domain">' + esc(displayDomain(c.domain)) + '</span></div>'
         + '</div></td>';
 
       // Notes + Stage combined cell
@@ -5371,7 +5377,7 @@ function renderBlockedPage() {
     return '<div class="blocked-domain-row">' +
       '<div class="blocked-domain-icon">' + domain[0].toUpperCase() + '</div>' +
       '<div class="blocked-domain-info">' +
-        '<span class="blocked-domain-name">' + esc(domain) + '</span>' +
+        '<span class="blocked-domain-name">' + esc(displayDomain(domain)) + '</span>' +
         (meta ? '<span class="blocked-domain-meta">' + meta + '</span>' : '') +
       '</div>' +
       '<button class="blocked-domain-unblock" onclick="unblockDomain(\'' + domain.replace(/'/g, "\\'") + '\')">Unblock</button>' +
@@ -5639,7 +5645,7 @@ function showFlaggedView() {
 
     return '<tr>' +
       '<td class="col-check"><input type="checkbox" class="row-checkbox" data-flagged-domain="' + esc(domain) + '"' + isChecked + ' onchange="toggleFlaggedSelect(\'' + dSafe + '\', this.checked)"></td>' +
-      '<td><div class="company-cell"' + companyClick + '><div class="company-logo" style="background:#e8710a">' + domain[0].toUpperCase() + '</div><div class="company-info"><span class="company-name">' + esc(item.name) + '</span><span class="company-domain">' + esc(domain) + '</span></div></div></td>' +
+      '<td><div class="company-cell"' + companyClick + '><div class="company-logo" style="background:#e8710a">' + domain[0].toUpperCase() + '</div><div class="company-info"><span class="company-name">' + esc(item.name) + '</span><span class="company-domain">' + esc(displayDomain(domain)) + '</span></div></div></td>' +
       '<td style="font-size:12px;color:var(--text2)">' + (item.primaryEmail ? '<div>' + esc(item.primaryName) + '</div><div style="font-size:11px;opacity:.7">' + esc(item.primaryEmail) + '</div>' : '<span style="opacity:.4">—</span>') + '</td>' +
       '<td style="font-size:12px;font-weight:600">' + item.totalEmails + '</td>' +
       '<td style="font-size:12px;color:var(--text2)">' + item.totalSent + '</td>' +
@@ -6511,7 +6517,7 @@ function showArchivedView() {
 
     return '<tr>' +
       '<td class="col-check"></td>' +
-      '<td><div class="company-cell"><div class="company-logo" style="background:var(--text2);opacity:.6">' + domain[0].toUpperCase() + '</div><div class="company-info"><span class="company-name" style="opacity:.7">' + esc(name) + '</span><span class="company-domain">' + esc(domain) + '</span></div></div></td>' +
+      '<td><div class="company-cell"><div class="company-logo" style="background:var(--text2);opacity:.6">' + domain[0].toUpperCase() + '</div><div class="company-info"><span class="company-name" style="opacity:.7">' + esc(name) + '</span><span class="company-domain">' + esc(displayDomain(domain)) + '</span></div></div></td>' +
       '<td colspan="5" style="color:var(--text2);font-size:12px">' + totalSent + ' sent, ' + totalRecv + ' received, ' + contactCount + ' contact' + (contactCount !== 1 ? 's' : '') + '</td>' +
       '<td colspan="2" style="text-align:right">' +
         '<button class="btn btn-ghost btn-sm" onclick="unarchiveCompany(\'' + domain.replace(/'/g, "\\'") + '\')" style="font-size:11px;color:var(--green);border-color:var(--green)">Restore</button>' +
@@ -6880,8 +6886,8 @@ function renderMergeCards() {
   function cardHTML(c) {
     var isPrimary = (_mergePrimary === c.domain);
     var aliases = getMergedAliases(c.domain);
-    var domainText = c.domain;
-    if (aliases.length > 0) domainText += ' + ' + aliases.join(', ');
+    var domainText = displayDomain(c.domain);
+    if (aliases.length > 0) domainText += ' + ' + aliases.map(displayDomain).join(', ');
     var contactCount = c.allContacts ? c.allContacts.length : 0;
     return '<div class="merge-card' + (isPrimary ? ' selected' : '') + '" onclick="selectMergePrimary(\'' + c.domain.replace(/'/g, "\\'") + '\')">' +
       '<div class="merge-radio"></div>' +
@@ -7040,12 +7046,12 @@ function showCompanyPanel(id) {
       '<button class="dp-flag' + (followUpCompanies.has(c.domain) ? ' active' : '') + '" onclick="event.stopPropagation();toggleFollowUp(\'' + dSafeH + '\');showCompanyPanel(' + c.id + ')" title="' + (followUpCompanies.has(c.domain) ? 'Remove from Follow Up' : 'Flag for Follow Up') + '"><svg viewBox="0 0 24 24" fill="' + (followUpCompanies.has(c.domain) ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></button></div>' +
       '<div class="dp-domain">' +
         '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
-          '<span style="font-size:12px">Website: <a href="https://' + esc(c.domain) + '" target="_blank" style="color:var(--accent)">' + esc(c.domain) + '</a></span>' +
+          '<span style="font-size:12px">Website: <a href="https://www.' + esc(c.domain) + '" target="_blank" style="color:var(--accent)">' + esc(displayDomain(c.domain)) + '</a></span>' +
         '</div>' +
         (c.mergedAliases && c.mergedAliases.length > 0 ? '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px">' +
           '<span style="font-size:11px;color:var(--text2);font-weight:600">Merged domains:</span>' +
           c.mergedAliases.map(function(alias) {
-            return '<span class="merge-alias-tag">' + esc(alias) + '<button onclick="event.stopPropagation();if(confirm(\'Unmerge ' + alias.replace(/'/g, "\\'") + '? It will become a separate company again.\')){unmergeCompany(\'' + alias.replace(/'/g, "\\'") + '\')}" title="Unmerge">&times;</button></span>';
+            return '<span class="merge-alias-tag">' + esc(displayDomain(alias)) + '<button onclick="event.stopPropagation();if(confirm(\'Unmerge ' + alias.replace(/'/g, "\\'") + '? It will become a separate company again.\')){unmergeCompany(\'' + alias.replace(/'/g, "\\'") + '\')}" title="Unmerge">&times;</button></span>';
           }).join('') +
         '</div>' : '') +
       '</div>' +
@@ -10026,7 +10032,7 @@ document.getElementById('searchInput').oninput = function() {
         html += '<div class="gs-item" data-type="company" data-id="' + c.id + '">' +
           '<div class="gs-avatar" style="background:' + color + '">' + esc(initial) + '</div>' +
           '<div class="gs-info"><div class="gs-name">' + esc(c.name) + '</div>' +
-          '<div class="gs-meta">' + esc(c.domain) + ' &middot; ' + c.sent + ' sent, ' + c.received + ' received</div></div>' +
+          '<div class="gs-meta">' + esc(displayDomain(c.domain)) + ' &middot; ' + c.sent + ' sent, ' + c.received + ' received</div></div>' +
           '<span class="gs-tag" style="background:' + statusColor + ';color:#fff">' + esc(c.status) + '</span></div>';
       });
     }
