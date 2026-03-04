@@ -2658,11 +2658,10 @@ async function syncToSupabase() {
     // overwrite changes made on another device (e.g. phone changed a
     // company type while computer still has the old value in memory).
     try {
-      const { data: remoteCompanies } = await supabaseClient
-        .from('companies')
-        .select('domain, company_type, is_starred, is_archived, is_flagged, is_blocked, is_followup, followup_date, proposal_stage, proposal_notes, merged_into')
-        .eq('user_id', supabaseUserId);
-      if (remoteCompanies) {
+      const remoteCompanies = await supabaseFetchAll('companies',
+        'domain, company_type, is_starred, is_archived, is_flagged, is_blocked, is_followup, followup_date, proposal_stage, proposal_notes, merged_into',
+        { user_id: supabaseUserId });
+      if (remoteCompanies && remoteCompanies.length > 0) {
         // Skip domains with pending local edits — those take priority
         const pending = JSON.parse(localStorage.getItem('kennion_pending_edits') || '{}');
         for (const rc of remoteCompanies) {
@@ -2738,14 +2737,9 @@ async function syncToSupabase() {
     }
 
     // Get company IDs for contact foreign keys
-    const { data: companyIdRows } = await supabaseClient
-      .from('companies')
-      .select('id, domain')
-      .eq('user_id', supabaseUserId);
+    const companyIdRows = await supabaseFetchAll('companies', 'id, domain', { user_id: supabaseUserId });
     const domainToCompanyId = {};
-    if (companyIdRows) {
-      for (const r of companyIdRows) domainToCompanyId[r.domain] = r.id;
-    }
+    for (const r of companyIdRows) domainToCompanyId[r.domain] = r.id;
 
     // Batch upsert contacts (chunks of 200)
     for (let i = 0; i < contactRows.length; i += 200) {
@@ -2820,6 +2814,27 @@ async function syncToSupabase() {
 }
 
 // ── LOAD FROM SUPABASE ──
+// Paginated Supabase fetch — overcomes the default 1000-row limit.
+// Fetches in pages of PAGE_SIZE until all rows are retrieved.
+async function supabaseFetchAll(table, selectCols, filters) {
+  const PAGE_SIZE = 1000;
+  let allData = [];
+  let from = 0;
+  while (true) {
+    let query = supabaseClient.from(table).select(selectCols).range(from, from + PAGE_SIZE - 1);
+    for (const [key, val] of Object.entries(filters || {})) {
+      query = query.eq(key, val);
+    }
+    const { data, error } = await query;
+    if (error) { console.warn('Supabase: paginated fetch error on ' + table + ':', error.message); break; }
+    if (!data || data.length === 0) break;
+    allData = allData.concat(data);
+    if (data.length < PAGE_SIZE) break; // last page
+    from += PAGE_SIZE;
+  }
+  return allData;
+}
+
 async function loadFromSupabase() {
   if (!supabaseReady || !supabaseUserId) return null;
   try {
@@ -2827,21 +2842,19 @@ async function loadFromSupabase() {
     const loadStart = Date.now();
     const deviceId = localStorage.getItem('kennion_device_id') || '';
 
-    // Run all 4 queries in parallel for maximum speed
-    const [companyResult, contactResult, settingsResult, scanResult] = await Promise.all([
-      supabaseClient.from('companies').select('*').eq('user_id', supabaseUserId),
-      supabaseClient.from('contacts').select('*').eq('user_id', supabaseUserId),
+    // Run all 4 queries in parallel — companies and contacts use pagination
+    // to overcome Supabase's default 1000-row limit
+    const [companyData, contactData, settingsResult, scanResult] = await Promise.all([
+      supabaseFetchAll('companies', '*', { user_id: supabaseUserId }),
+      supabaseFetchAll('contacts', '*', { user_id: supabaseUserId }),
       supabaseClient.from('user_settings').select('key, value').eq('user_id', supabaseUserId),
       supabaseClient.from('scan_metadata').select('*').eq('user_id', supabaseUserId).eq('device_id', deviceId).single()
     ]);
 
-    const { data: companyData, error: companyErr } = companyResult;
-    if (companyErr) { console.warn('Supabase: load companies failed:', companyErr.message); return null; }
     if (!companyData || companyData.length === 0) {
       console.log('Supabase: no companies found (first time)');
       return null;
     }
-    const { data: contactData } = contactResult;
     const { data: settingsData } = settingsResult;
     const { data: scanData } = scanResult;
 
@@ -2900,6 +2913,7 @@ async function loadFromSupabase() {
     }
 
     // Apply settings
+    const settingsData = settingsResult.data;
     if (settingsData) {
       for (const s of settingsData) {
         try {
@@ -2921,6 +2935,7 @@ async function loadFromSupabase() {
     }
 
     // Scan metadata
+    const scanData = scanResult.data;
     let scanMeta = null;
     if (scanData) {
       scanMeta = {
@@ -3182,11 +3197,10 @@ async function refreshFromSupabase() {
   refreshInProgress = true;
   try {
     // Fetch only company metadata (not contacts/settings — those are heavy)
-    const { data: remoteCompanies, error } = await supabaseClient
-      .from('companies')
-      .select('domain, company_name, company_type, is_starred, is_archived, is_flagged, is_blocked, is_followup, followup_date, proposal_stage, proposal_notes, merged_into, enrichment, custom_data, sent_count, received_count, last_activity_date')
-      .eq('user_id', supabaseUserId);
-    if (error || !remoteCompanies) throw error || new Error('no data');
+    const remoteCompanies = await supabaseFetchAll('companies',
+      'domain, company_name, company_type, is_starred, is_archived, is_flagged, is_blocked, is_followup, followup_date, proposal_stage, proposal_notes, merged_into, enrichment, custom_data, sent_count, received_count, last_activity_date',
+      { user_id: supabaseUserId });
+    if (!remoteCompanies || remoteCompanies.length === 0) throw new Error('no data');
 
     const pending = JSON.parse(localStorage.getItem('kennion_pending_edits') || '{}');
     let changed = false;
