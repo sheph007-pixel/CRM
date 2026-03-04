@@ -3507,14 +3507,16 @@ function buildCompaniesFromDomainMap() {
 
   companies = [];
   let id = 1;
+  let _skipCount = { skip_domain: 0, blocked: 0, flagged: 0, archived: 0, merged: 0, no_contacts: 0, no_sent: 0 };
   for (const [domain, data] of Object.entries(domainMap)) {
     // Skip blocked, flagged, and archived domains — they have their own views
-    if (SKIP_DOMAINS.has(domain) || data.is_blocked) continue;
-    if (data.is_flagged) continue;
-    if (data.is_archived) continue;
+    if (SKIP_DOMAINS.has(domain)) { _skipCount.skip_domain++; continue; }
+    if (data.is_blocked) { _skipCount.blocked++; continue; }
+    if (data.is_flagged) { _skipCount.flagged++; continue; }
+    if (data.is_archived) { _skipCount.archived++; continue; }
 
     // Skip secondary domains — their data is merged into their primary
-    if (secondaryDomains.has(domain)) continue;
+    if (secondaryDomains.has(domain)) { _skipCount.merged++; continue; }
 
     // Collect all domain data sources (primary + any merged aliases)
     var domainSources = [{ domain: domain, data: data }];
@@ -3557,7 +3559,7 @@ function buildCompaniesFromDomainMap() {
 
     const contactArr = Object.values(mergedContacts);
     // DB-loaded companies should always show, even if contacts didn't fully load
-    if (contactArr.length === 0 && !data._fromDb) continue;
+    if (contactArr.length === 0 && !data._fromDb) { _skipCount.no_contacts++; continue; }
 
     // Per-contact counts from individual Sets (use DB counts as floor)
     for (const ct of contactArr) {
@@ -3581,7 +3583,7 @@ function buildCompaniesFromDomainMap() {
 
     // SELECTIVE: only create company if user has sent at least 1 email to this domain
     // Skip filter for DB-loaded domains — they were already vetted
-    if (uniqueSent === 0 && !data._fromDb) continue;
+    if (uniqueSent === 0 && !data._fromDb) { _skipCount.no_sent++; continue; }
 
     contactArr.sort((a, b) => (b.sent + b.received) - (a.sent + a.received));
     const primary = getPrimaryContact(domain, contactArr) || { name: domain, email: '' };
@@ -3650,7 +3652,7 @@ function buildCompaniesFromDomainMap() {
 
   companies.sort((a, b) => (b.sent + b.received) - (a.sent + a.received));
   companies.forEach((c, i) => c.id = i + 1);
-  console.log('buildCompaniesFromDomainMap: ' + companies.length + ' companies built in ' + (Date.now() - buildStart) + 'ms');
+  console.log('buildCompaniesFromDomainMap: ' + companies.length + ' companies from ' + Object.keys(domainMap).length + ' domains in ' + (Date.now() - buildStart) + 'ms — skipped:', JSON.stringify(_skipCount));
 }
 
 // Async: look up real company names for any domains not yet in cache
