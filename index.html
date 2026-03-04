@@ -2521,6 +2521,7 @@ let supabaseUserId = null;
 let supabaseReady = false;
 let supabaseSyncTimer = null;
 let supabaseSyncInProgress = false;
+let _syncCount = 0;
 
 // Supabase config — hardcoded (anon key is safe to expose, like Firebase config)
 const SUPABASE_URL = 'https://hkfdapvulzpnrwcgxyrx.supabase.co';
@@ -2609,20 +2610,22 @@ async function syncToSupabase() {
   const syncStart = Date.now();
   try {
     // ── PULL BEFORE PUSH: merge metadata from other devices ──
-    // Fetch the latest user-editable fields from Supabase so we don't
-    // overwrite changes made on another device (e.g. phone changed a
-    // company type while computer still has the old value in memory).
-    try {
-      const remoteCompanies = await supabaseFetchAll('companies',
-        'domain, company_type, is_starred, is_archived, is_flagged, is_blocked, is_followup, followup_date, proposal_stage, proposal_notes, merged_into',
-        { user_id: supabaseUserId });
-      if (remoteCompanies && remoteCompanies.length > 0) {
-        for (const rc of remoteCompanies) {
-          if (!domainMap[rc.domain]) continue;
-          applyCompanyChange(rc);
+    // Skip during startup — we just loaded fresh data from Supabase.
+    // Only pull on subsequent syncs (user edits, periodic saves).
+    if (_syncCount > 0) {
+      try {
+        const remoteCompanies = await supabaseFetchAll('companies',
+          'domain, company_type, is_starred, is_archived, is_flagged, is_blocked, is_followup, followup_date, proposal_stage, proposal_notes, merged_into',
+          { user_id: supabaseUserId });
+        if (remoteCompanies && remoteCompanies.length > 0) {
+          for (const rc of remoteCompanies) {
+            if (!domainMap[rc.domain]) continue;
+            applyCompanyChange(rc);
+          }
         }
-      }
-    } catch(e) { console.warn('Supabase: pull-before-push failed (continuing):', e); }
+      } catch(e) { console.warn('Supabase: pull-before-push failed (continuing):', e); }
+    }
+    _syncCount++;
 
     // Sync companies + contacts in batches — read all metadata from domainMap (single source of truth)
     const companyRows = [];
@@ -2738,13 +2741,14 @@ async function syncToSupabase() {
       contact_enrichment: contactEnrichment,
       sidebar_collapsed: _sidebarCollapsed,
     };
-    for (const [key, value] of Object.entries(settingsToSync)) {
+    // Save all settings in parallel (was sequential — 12 round trips → 1)
+    await Promise.all(Object.entries(settingsToSync).map(async ([key, value]) => {
       const { error } = await supabaseClient
         .from('user_settings')
         .upsert({ user_id: supabaseUserId, key: key, value: JSON.stringify(value) },
                 { onConflict: 'user_id,key' });
       if (error) console.warn('Supabase: setting ' + key + ' failed:', error.message);
-    }
+    }));
 
     // Sync scan metadata (use fixed device_id 'primary' — one scan state per user)
     await supabaseClient
@@ -2801,13 +2805,33 @@ async function loadFromSupabase() {
     console.log('Supabase: loading data...');
     const loadStart = Date.now();
 
-    // Load all data in parallel — one round trip per table
+    // 2-phase load: fast columns first (no heavy JSONB), then enrichment deferred
+    const COMPANY_FAST_COLS = 'id,domain,company_name,company_type,is_starred,is_archived,is_flagged,is_blocked,is_followup,followup_date,last_activity_date,last_sent_date,last_received_date,sent_count,received_count,proposal_stage,proposal_notes,merged_into,custom_data';
+    const CONTACT_FAST_COLS = 'id,company_id,email,name,is_starred,last_activity_date,sent_count,received_count';
     const [companyData, contactData, settingsResult, scanResult] = await Promise.all([
-      supabaseFetchAll('companies', '*', { user_id: supabaseUserId }),
-      supabaseFetchAll('contacts', '*', { user_id: supabaseUserId }),
+      supabaseFetchAll('companies', COMPANY_FAST_COLS, { user_id: supabaseUserId }),
+      supabaseFetchAll('contacts', CONTACT_FAST_COLS, { user_id: supabaseUserId }),
       supabaseClient.from('user_settings').select('key, value').eq('user_id', supabaseUserId),
       supabaseClient.from('scan_metadata').select('*').eq('user_id', supabaseUserId).order('updated_at', { ascending: false }).limit(1).maybeSingle()
     ]);
+    // Deferred: load heavy JSONB columns (enrichment) in background after render
+    setTimeout(async () => {
+      try {
+        const enrichRows = await supabaseFetchAll('companies', 'domain,enrichment', { user_id: supabaseUserId });
+        if (enrichRows) {
+          for (const r of enrichRows) {
+            if (r.enrichment && Object.keys(r.enrichment).length > 0) enrichmentCache[r.domain] = r.enrichment;
+          }
+        }
+        const ctEnrichRows = await supabaseFetchAll('contacts', 'email,enrichment', { user_id: supabaseUserId });
+        if (ctEnrichRows) {
+          for (const r of ctEnrichRows) {
+            if (r.enrichment && Object.keys(r.enrichment).length > 0) contactEnrichment[r.email] = r.enrichment;
+          }
+        }
+        console.log('Supabase: deferred enrichment loaded');
+      } catch(e) { console.warn('Supabase: deferred enrichment load failed:', e); }
+    }, 2000);
 
     if (!companyData || companyData.length === 0) {
       console.log('Supabase: no companies found (first time)');
@@ -4189,7 +4213,7 @@ function showWelcome() {
   aiChatOpen = false;
 }
 
-async function onSignedIn(unused, supabasePromise) {
+async function onSignedIn(cacheAlreadyRendered, supabasePromise) {
   document.getElementById('authLoading').style.display = 'none';
   document.getElementById('welcomeScreen').style.display = 'none';
   document.getElementById('crmContent').classList.add('active');
@@ -4209,7 +4233,9 @@ async function onSignedIn(unused, supabasePromise) {
   document.getElementById('globalSearchWrap').style.display = '';
   document.getElementById('aiFab').classList.remove('hidden');
 
-  let hasData = false;
+  // If cache was already rendered in init(), mark hasData so Supabase sync
+  // runs as a background update instead of blocking the UI.
+  let hasData = !!cacheAlreadyRendered;
   let cloudOnlyRestore = false;
   const startupTime = Date.now();
 
@@ -4315,14 +4341,17 @@ async function onSignedIn(unused, supabasePromise) {
   // Step 3: Email scan — only ADDS new emails, never removes existing data
   // Detect corrupted counts: if DB has companies but most have sent_count=0,
   // a previous bug wiped the counts. Force full rescan to recover real counts.
+  // Only trigger if fullScanDone was true (meaning counts SHOULD be populated)
+  // and a supermajority (>80%) have zero counts. Previous 50% threshold caused
+  // false positives on every load.
   let needsCountRecovery = false;
-  if (hasData) {
+  if (hasData && fullScanDone) {
     const domains = Object.entries(domainMap);
-    // Only check non-blocked domains — blocked domains naturally have zero counts
-    const dbDomains = domains.filter(([d, v]) => v._fromDb && !v.is_blocked);
-    const zeroCountDomains = dbDomains.filter(([d, v]) => v._dbSentCount === 0 && v._dbReceivedCount === 0);
-    if (dbDomains.length > 4 && zeroCountDomains.length > dbDomains.length * 0.5) {
-      console.log('Startup: detected corrupted counts (' + zeroCountDomains.length + '/' + dbDomains.length + ' non-blocked have zero counts) — forcing full rescan');
+    // Only check non-blocked, non-archived, non-flagged domains
+    const activeDomains = domains.filter(([d, v]) => v._fromDb && !v.is_blocked && !v.is_archived && !v.is_flagged);
+    const zeroCountDomains = activeDomains.filter(([d, v]) => v._dbSentCount === 0 && v._dbReceivedCount === 0);
+    if (activeDomains.length > 10 && zeroCountDomains.length > activeDomains.length * 0.8) {
+      console.log('Startup: detected corrupted counts (' + zeroCountDomains.length + '/' + activeDomains.length + ' active domains have zero counts) — forcing full rescan');
       needsCountRecovery = true;
       fullScanDone = false;
       deltaLink = null;
@@ -4800,9 +4829,14 @@ function updateTypeCounts() {
   updateStats();
 }
 
-// Snapshot removed — Supabase is the sole source of truth.
-// No more localStorage snapshots; data loads directly from the database.
-function saveInstantSnapshot() { /* no-op */ }
+// Save a lightweight snapshot after stats update so the local cache
+// stays fresh for instant rendering on next page load.
+// Debounced to avoid hammering localStorage on rapid updates.
+let _snapshotTimer = null;
+function saveInstantSnapshot() {
+  if (_snapshotTimer) clearTimeout(_snapshotTimer);
+  _snapshotTimer = setTimeout(() => { _snapshotTimer = null; saveLocalCache(); }, 2000);
+}
 function loadInstantSnapshot() { return false; }
 
 function setViewTitle(title, showDashboard) {
@@ -9720,8 +9754,22 @@ function esc(text) {
   loadLogoFailedCache();
   renderTableHeader();
 
+  // ── INSTANT RENDER: load from localStorage cache immediately ──
+  // This shows data to the user in <50ms while Supabase fetches in background.
+  let cacheRendered = false;
+  const localData = loadLocalCache();
+  if (localData && localData.domainMap && Object.keys(localData.domainMap).length > 0) {
+    domainMap = localData.domainMap;
+    if (localData.fullScanDone) fullScanDone = localData.fullScanDone;
+    if (localData.lastScanTime) lastScanTime = localData.lastScanTime;
+    buildCompaniesFromDomainMap();
+    renderTable();
+    updateStats();
+    cacheRendered = true;
+    console.log('Init: instant render from cache — ' + Object.keys(domainMap).length + ' domains in ' + (Date.now() - pageStart) + 'ms');
+  }
+
   // ── START SUPABASE LOAD IN PARALLEL WITH MSAL ──
-  // Don't render early — wait for MSAL so we render once with full UI
   const cachedUid = localStorage.getItem('kennion_sb_uid');
   const supabasePromise = cachedUid ? (async () => {
     await initSupabase();
@@ -9749,7 +9797,7 @@ function esc(text) {
           userEmail = currentAccount.username;
           clearTimeout(safetyTimer);
           welcomed = true;
-          await onSignedIn(false, supabasePromise);
+          await onSignedIn(cacheRendered, supabasePromise);
           return;
         }
       }
