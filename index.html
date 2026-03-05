@@ -766,11 +766,11 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
       </button>
     </div>
     <div class="sidebar-item inbox-item-nav" id="inboxNavItem" onclick="showInbox()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-      Emails
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></svg>
+      Inbox
       <span class="sidebar-badge inbox-badge-new" id="inboxCount" style="display:none"><span id="inboxCountNum">0</span></span>
     </div>
-    <div class="sidebar-item" id="followUpNavItem" onclick="showFollowUp()">
+    <div class="sidebar-item" id="followUpNavItem" onclick="showInbox();switchInboxTab('followups',document.querySelector('.inbox-tab[data-tab=followups]'))">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
       Follow Up
       <span class="sidebar-badge" id="followUpCount" style="background:#e8453c">0</span>
@@ -992,7 +992,7 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
     <!-- EMAILS VIEW -->
     <div class="inbox-view" id="inboxView">
       <div class="inbox-toolbar">
-        <h2>Emails</h2>
+        <h2>Inbox</h2>
         <span class="inbox-count-label" id="inboxTopCount"></span>
         <button class="inbox-tb-btn inbox-compose-btn" onclick="openComposeNew()" title="Compose new email">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -1016,8 +1016,9 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
         </button>
       </div>
       <div class="inbox-tabs">
-        <button class="inbox-tab active" onclick="switchInboxTab('all',this)">Focused <span class="tab-badge" id="inboxTabAll" style="display:none">0</span></button>
-        <button class="inbox-tab" onclick="switchInboxTab('unread',this)">Unread <span class="tab-badge" id="inboxTabNew" style="display:none">0</span></button>
+        <button class="inbox-tab active" data-tab="primary" onclick="switchInboxTab('primary',this)">Primary</button>
+        <button class="inbox-tab" data-tab="all" onclick="switchInboxTab('all',this)">Emails <span class="tab-badge" id="inboxTabAll" style="display:none">0</span></button>
+        <button class="inbox-tab" data-tab="followups" onclick="switchInboxTab('followups',this)">Follow Ups <span class="tab-badge" id="inboxTabFollowUp" style="display:none">0</span></button>
       </div>
       <div class="inbox-list" id="inboxList">
         <div class="inbox-empty">
@@ -1025,6 +1026,13 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
           <p>No emails yet</p>
           <span>Emails from leads in your CRM will show here — only active emails from your Outlook account</span>
         </div>
+      </div>
+      <!-- Follow Ups tab content (inside inbox view) -->
+      <div class="table-wrap" id="inboxFollowUpWrap" style="display:none;margin:0;border-radius:0;border:none;box-shadow:none">
+        <table>
+          <thead id="inboxFuHead"></thead>
+          <tbody id="inboxFuBody"></tbody>
+        </table>
       </div>
     </div>
 
@@ -8390,7 +8398,7 @@ function exportCSV() {
 // ──────────────────────────────────────────────
 let inboxEmails = [];
 let inboxSelectedIds = new Set();
-let inboxCurrentTab = 'all';
+let inboxCurrentTab = 'primary';
 let inboxLoading = false;
 
 function showInbox() {
@@ -8419,7 +8427,18 @@ function switchInboxTab(tab, btn) {
   inboxSelectedIds.clear();
   document.querySelectorAll('.inbox-tab').forEach(t => t.classList.remove('active'));
   if (btn) btn.classList.add('active');
-  renderInbox();
+  // Toggle containers
+  var emailList = document.getElementById('inboxList');
+  var fuWrap = document.getElementById('inboxFollowUpWrap');
+  if (tab === 'followups') {
+    emailList.style.display = 'none';
+    fuWrap.style.display = '';
+    renderInboxFollowUps();
+  } else {
+    emailList.style.display = '';
+    fuWrap.style.display = 'none';
+    renderInbox();
+  }
 }
 
 async function refreshInbox() {
@@ -8503,17 +8522,22 @@ function renderInbox() {
   const list = document.getElementById('inboxList');
   let items = [...inboxEmails];
 
-  if (inboxCurrentTab === 'unread') items = items.filter(e => !e.isRead);
+  // Primary tab: show only unread / recent emails (last 7 days)
+  if (inboxCurrentTab === 'primary') {
+    var weekAgoTs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    items = items.filter(function(e) { return !e.isRead || e.date.getTime() > weekAgoTs; });
+  }
 
   // Update badges
-  const unreadCount = inboxEmails.filter(e => !e.isRead).length;
+  var fuCount = 0;
+  for (var fd in domainMap) { if (domainMap[fd].is_followup && !domainMap[fd].is_archived && !domainMap[fd].is_blocked) fuCount++; }
   const allBadge = document.getElementById('inboxTabAll');
-  const newBadge = document.getElementById('inboxTabNew');
+  const fuBadge = document.getElementById('inboxTabFollowUp');
   allBadge.textContent = inboxEmails.length;
   allBadge.style.display = inboxEmails.length ? '' : 'none';
-  newBadge.textContent = unreadCount;
-  newBadge.style.display = unreadCount ? '' : 'none';
-  document.getElementById('inboxTopCount').textContent = inboxEmails.length + ' emails from leads';
+  fuBadge.textContent = fuCount;
+  fuBadge.style.display = fuCount ? '' : 'none';
+  document.getElementById('inboxTopCount').textContent = '';
 
   // Show/hide bulk action buttons
   const hasSelection = inboxSelectedIds.size > 0;
@@ -8524,8 +8548,8 @@ function renderInbox() {
   if (!items.length) {
     list.innerHTML = `<div class="inbox-empty">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></svg>
-      <p>${inboxCurrentTab === 'unread' ? 'No unread emails' : 'No emails yet'}</p>
-      <span>${inboxCurrentTab === 'unread' ? 'All caught up!' : 'Only active emails in your Outlook account from CRM leads appear here'}</span>
+      <p>${inboxCurrentTab === 'primary' ? 'All caught up!' : 'No emails yet'}</p>
+      <span>${inboxCurrentTab === 'primary' ? 'No recent or unread emails from your CRM leads' : 'Only active emails in your Outlook account from CRM leads appear here'}</span>
     </div>`;
     return;
   }
@@ -8596,6 +8620,81 @@ function renderInbox() {
     }
   }
   list.innerHTML = html;
+}
+
+function renderInboxFollowUps() {
+  var thead = document.getElementById('inboxFuHead');
+  var tbody = document.getElementById('inboxFuBody');
+
+  thead.innerHTML = '<tr>' +
+    '<th>Company</th>' +
+    '<th>Primary Contact</th>' +
+    '<th>Last Email</th>' +
+    '<th>Due Date</th>' +
+    '<th style="width:40px"></th>' +
+    '</tr>';
+
+  var data = companies.filter(function(c) {
+    var dm = domainMap[c.domain];
+    return dm && dm.is_followup && !dm.is_archived && !dm.is_blocked;
+  });
+
+  if (data.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text2)">No follow-ups yet. Flag a company to add it here.</td></tr>';
+    return;
+  }
+
+  var today = new Date().toISOString().slice(0, 10);
+
+  data.sort(function(a, b) {
+    var da = ((domainMap[a.domain] && domainMap[a.domain].followup_date) || '').substring(0, 10);
+    var db = ((domainMap[b.domain] && domainMap[b.domain].followup_date) || '').substring(0, 10);
+    if (da && !db) return -1;
+    if (!da && db) return 1;
+    if (da && db) return da.localeCompare(db);
+    return (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
+  });
+
+  var rows = [];
+  for (var i = 0; i < data.length; i++) {
+    var c = data[i];
+    var color = COLORS[c.id % COLORS.length];
+    var dSafe = c.domain.replace(/'/g, "\\'");
+    var rawFuDate = (domainMap[c.domain] && domainMap[c.domain].followup_date) || '';
+    var fuDate = rawFuDate ? rawFuDate.substring(0, 10) : '';
+    var isOverdue = fuDate && fuDate < today;
+
+    var row = '<tr data-id="' + c.id + '" onclick="openDetail(' + c.id + ')" style="cursor:pointer">';
+
+    row += '<td><div class="company-cell">' +
+      '<div class="company-logo" style="background:' + color + '">' + companyLogoHTML(c.domain, color, c.name) + '</div>' +
+      '<div class="company-info"><span class="company-name">' + esc(c.name) + '</span>' +
+      '<span class="company-domain">' + esc(displayDomain(c.domain)) + '</span></div></div></td>';
+
+    var initials = c.contact ? c.contact.split(' ').map(function(n){return n[0]}).join('').substring(0,2) : '';
+    var ctTitle = typeof getContactTitle === 'function' ? getContactTitle(c.contactEmail || '') : '';
+    row += '<td><div class="contact-cell">' +
+      '<div class="avatar" style="background:' + color + '">' + contactPhotoHTML(c.contactEmail || '', color, initials) + '</div>' +
+      '<div><span class="contact-name">' + esc(c.contact || '—') + '</span>' +
+      (ctTitle ? '<div class="contact-title">' + esc(ctTitle) + '</div>' : '') +
+      '</div></div></td>';
+
+    row += '<td><span style="color:var(--text2)">' + esc(c.lastActivity || '—') + '</span></td>';
+
+    row += '<td><input type="date" class="fu-datepicker' + (isOverdue ? ' fu-overdue' : '') + '" value="' + esc(fuDate) + '" ' +
+      'onclick="event.stopPropagation()" ' +
+      'onchange="setFollowUpDate(\'' + dSafe + '\',this.value);renderInboxFollowUps()" ' +
+      'title="Set follow-up date"></td>';
+
+    row += '<td><button class="fu-remove" onclick="event.stopPropagation();toggleFollowUp(\'' + dSafe + '\');renderInboxFollowUps()" title="Remove">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+      '</button></td>';
+
+    row += '</tr>';
+    rows.push(row);
+  }
+
+  tbody.innerHTML = rows.join('');
 }
 
 // Selection
