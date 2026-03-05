@@ -4158,6 +4158,19 @@ async function onSignedIn(unused, supabasePromise) {
     console.warn('Startup: Supabase load failed:', e);
   }
 
+  // Fallback: if Supabase didn't load, try local cache
+  if (!hasData) {
+    const cached = loadLocalCache();
+    if (cached && cached.domainMap && Object.keys(cached.domainMap).length > 0) {
+      domainMap = cached.domainMap;
+      if (cached.fullScanDone !== undefined) fullScanDone = cached.fullScanDone;
+      if (cached.lastScanTime) lastScanTime = cached.lastScanTime;
+      hasData = true;
+      buildCompaniesFromDomainMap();
+      console.log('Startup: loaded from local cache — ' + Object.keys(domainMap).length + ' domains');
+    }
+  }
+
   // ── STEP 2: Set up ALL UI while layout is visibility:hidden ──
   // The full-page overlay covers everything. We set up sidebar, content,
   // data — then remove the overlay to reveal the complete UI in one paint.
@@ -4485,6 +4498,7 @@ function updateStats() {
   document.getElementById('oldClientCount').textContent = old.toLocaleString();
 
   updateArchivedCount();
+  updateFollowUpCount();
   // Save snapshot for instant render on next page load
   saveInstantSnapshot();
 }
@@ -5834,6 +5848,7 @@ function toggleFollowUp(domain) {
   }
   saveFollowUpCompanies();
   supabaseSaveCompanyField(domain, 'is_followup', domainMap[domain].is_followup);
+  saveLocalCache();
   updateFollowUpCount();
   renderTable();
 }
@@ -5842,6 +5857,7 @@ function setFollowUpDate(domain, date) {
   ensureDomain(domain);
   domainMap[domain].followup_date = date || null;
   supabaseSaveCompanyField(domain, 'followup_date', date || null);
+  saveLocalCache();
   renderTable();
 }
 
