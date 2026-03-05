@@ -2855,7 +2855,14 @@ async function loadFromSupabase() {
             case 'client_id': if (val) _clientId = val; break;
             case 'sidebar_collapsed': _sidebarCollapsed = !!val; break;
             case 'contact_name_overrides': if (val) Object.assign(contactNameOverrides, val); break;
-            case 'company_name_cache': if (val) Object.assign(companyNameCache, val); break;
+            case 'starred_contacts':
+              // Fill in stars not already loaded from contacts table
+              if (val) { for (var sk in val) { if (!starredContacts[sk]) starredContacts[sk] = val[sk]; } }
+              break;
+            case 'company_name_cache':
+              // Only fill in names not already loaded from companies table
+              if (val) { for (var cnk in val) { if (!companyNameCache[cnk]) companyNameCache[cnk] = val[cnk]; } }
+              break;
             // Note: blocked_domains, starred/archived/flagged/followup companies, proposal data,
             // merged_domains, enrichment, custom_data, starred_contacts are already loaded from
             // the companies table rows above — user_settings copies are kept as backup only
@@ -6500,6 +6507,7 @@ function saveCompanyNameEdit(domain, el) {
   saveCompanyNameCache();
   // Instant save to companies table for cross-device sync
   supabaseSaveCompanyField(domain, 'company_name', newName);
+  saveLocalCache();
   // Update in-memory company object
   var comp = companies.find(function(c) { return c.domain === domain; });
   if (comp) {
@@ -6518,8 +6526,22 @@ function saveContactNameEdit(el) {
   var email = el.dataset.email;
   if (!newName || !email) return;
   setContactDisplayName(email, newName);
+  // Update in-memory allContacts so panel re-renders show new name
+  var le = email.toLowerCase();
+  for (var ci = 0; ci < companies.length; ci++) {
+    if (companies[ci].allContacts) {
+      for (var ai = 0; ai < companies[ci].allContacts.length; ai++) {
+        if (companies[ci].allContacts[ai].email === le) {
+          companies[ci].allContacts[ai].name = newName;
+          // Update primary contact name if this is the primary
+          if (companies[ci].contactEmail === le) companies[ci].contact = newName;
+        }
+      }
+    }
+  }
   // Refresh the right panel if this contact is selected
-  if (currentContactOverlay && currentContactOverlay.email === email.toLowerCase()) {
+  if (currentContactOverlay && currentContactOverlay.email === le) {
+    if (currentContactOverlay.contact) currentContactOverlay.contact.name = newName;
     var h2 = document.querySelector('#dpRightHead .editable-name[data-email="' + email + '"]');
     if (h2) h2.textContent = newName;
   }
@@ -6534,6 +6556,18 @@ function saveContactNameEditHead(el) {
   var cid = el.dataset.cid;
   if (!newName || !email) return;
   setContactDisplayName(email, newName);
+  // Update in-memory allContacts so panel re-renders show new name
+  var le = email.toLowerCase();
+  for (var ci = 0; ci < companies.length; ci++) {
+    if (companies[ci].allContacts) {
+      for (var ai = 0; ai < companies[ci].allContacts.length; ai++) {
+        if (companies[ci].allContacts[ai].email === le) {
+          companies[ci].allContacts[ai].name = newName;
+          if (companies[ci].contactEmail === le) companies[ci].contact = newName;
+        }
+      }
+    }
+  }
   // Also update left panel contact list
   var leftEl = document.querySelector('#dpLeftContacts .editable-ct-name[data-email="' + email + '"]');
   if (leftEl) leftEl.textContent = newName;
@@ -6834,6 +6868,7 @@ function toggleStar(domain, email) {
     starredContacts[domain] = email;
   }
   saveStarredContacts();
+  saveLocalCache();
   buildCompaniesFromDomainMap();
   renderTable();
   updateStats();
