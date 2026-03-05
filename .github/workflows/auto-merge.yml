@@ -49,31 +49,64 @@ jobs:
             echo "::warning::VERCEL_TOKEN not set, skipping Vercel deploy"
             exit 0
           fi
-          npm i -g vercel@latest
-          # Get project info from Vercel API
-          PROJECT_DATA=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
-            "https://api.vercel.com/v9/projects?repo=sheph007-pixel/codex")
-          # Extract the first matching project
-          eval $(echo "$PROJECT_DATA" | python3 -c "
+          # Find the Vercel project linked to this repo
+          PROJECT_INFO=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v9/projects")
+          # Find project linked to this GitHub repo
+          PROJECT_ID=$(echo "$PROJECT_INFO" | python3 -c "
           import json, sys
           data = json.load(sys.stdin)
-          projects = data.get('projects', [])
-          if projects:
-              p = projects[0]
-              print(f'VERCEL_PROJECT_ID={p[\"id\"]}')
-              print(f'VERCEL_ORG_ID={p.get(\"accountId\", \"\")}')
-              print(f'PROJECT_NAME={p[\"name\"]}')
-          else:
-              print('echo No project found linked to this repo')
-              print('exit 1')
-          ")
-          echo "Found Vercel project: $PROJECT_NAME (ID: $VERCEL_PROJECT_ID)"
-          # Create .vercel directory for CLI
-          mkdir -p .vercel
-          echo "{\"orgId\":\"$VERCEL_ORG_ID\",\"projectId\":\"$VERCEL_PROJECT_ID\"}" > .vercel/project.json
-          echo "Deploying to Vercel production..."
-          vercel deploy --prod --yes --token="$VERCEL_TOKEN" 2>&1
-          echo "Vercel production deploy complete!"
+          for p in data.get('projects', []):
+              link = p.get('link', {})
+              if link.get('type') == 'github' and link.get('repo') == 'sheph007-pixel/codex':
+                  print(p['id'])
+                  sys.exit(0)
+          # Fallback: try project named 'crm'
+          for p in data.get('projects', []):
+              if p.get('name') == 'crm':
+                  print(p['id'])
+                  sys.exit(0)
+          print('NOT_FOUND')
+          " 2>/dev/null)
+          if [ "$PROJECT_ID" = "NOT_FOUND" ] || [ -z "$PROJECT_ID" ]; then
+            echo "::error::No Vercel project found for this repo"
+            # Save project list for debugging
+            echo "$PROJECT_INFO" | python3 -c "
+            import json, sys
+            data = json.load(sys.stdin)
+            for p in data.get('projects', []):
+                link = p.get('link', {})
+                print(f'  Project: {p[\"name\"]} - repo: {link.get(\"repo\", \"none\")} - type: {link.get(\"type\", \"none\")}')
+            " 2>/dev/null
+            exit 1
+          fi
+          echo "Found project ID: $PROJECT_ID"
+          # Create deployment via API
+          DEPLOY_RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://api.vercel.com/v13/deployments" \
+            -d "{
+              \"name\": \"crm\",
+              \"project\": \"$PROJECT_ID\",
+              \"target\": \"production\",
+              \"gitSource\": {
+                \"type\": \"github\",
+                \"repo\": \"sheph007-pixel/codex\",
+                \"ref\": \"main\"
+              }
+            }")
+          echo "$DEPLOY_RESPONSE" | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          if 'error' in d:
+              print(f'Error: {d[\"error\"].get(\"message\", d[\"error\"])}')
+              sys.exit(1)
+          print(f'Deployment: {d.get(\"id\", \"unknown\")}')
+          print(f'URL: {d.get(\"url\", \"unknown\")}')
+          print(f'Status: {d.get(\"readyState\", d.get(\"status\", \"unknown\"))}')
+          " 2>/dev/null
+          echo "Vercel production deploy triggered!"
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
