@@ -64,13 +64,15 @@ jobs:
             echo "::error::Deploy hook failed with HTTP $HTTP_CODE"
             exit 1
           fi
-      - name: Upload deploy hook debug info
+      - name: Commit deploy hook debug to repo
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: deploy-hook-debug
-          path: /tmp/deploy-debug/
-          retention-days: 1
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          cp /tmp/deploy-debug/result.txt ./deploy-debug.txt 2>/dev/null || echo "no debug output" > ./deploy-debug.txt
+          git add deploy-debug.txt
+          git commit -m "debug: deploy hook response [auto]" || true
+          git push origin main || true
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
