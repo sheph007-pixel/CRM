@@ -2640,7 +2640,25 @@ async function syncToSupabase() {
     // Get company IDs for contact foreign keys
     const companyIdRows = await supabaseFetchAll('companies', 'id, domain', { user_id: supabaseUserId });
     const domainToCompanyId = {};
-    for (const r of companyIdRows) domainToCompanyId[r.domain] = r.id;
+    const duplicateIds = []; // mixed-case DB rows to clean up
+    for (const r of companyIdRows) {
+      var lcDomain = r.domain ? r.domain.toLowerCase() : r.domain;
+      if (r.domain !== lcDomain && domainToCompanyId[lcDomain]) {
+        // This is a mixed-case duplicate — mark for deletion
+        duplicateIds.push(r.id);
+      } else {
+        domainToCompanyId[lcDomain] = r.id;
+        // Also keep original case mapping for cleanup detection
+        if (r.domain !== lcDomain) domainToCompanyId[r.domain] = r.id;
+      }
+    }
+    // Clean up mixed-case duplicate rows from DB
+    if (duplicateIds.length > 0) {
+      console.log('Supabase: cleaning up', duplicateIds.length, 'duplicate mixed-case domain rows');
+      for (let di = 0; di < duplicateIds.length; di += 100) {
+        await supabaseClient.from('companies').delete().in('id', duplicateIds.slice(di, di + 100));
+      }
+    }
 
     // Batch upsert contacts (chunks of 200)
     for (let i = 0; i < contactRows.length; i += 200) {
@@ -2785,29 +2803,44 @@ async function loadFromSupabase() {
     for (const c of companyData) {
       const domainKey = c.domain ? c.domain.toLowerCase() : c.domain;
       companyIdToDomain[c.id] = domainKey;
-      newDomainMap[domainKey] = {
-        contacts: {},
-        sentIds: new Set(),
-        receivedIds: new Set(),
-        lastDate: c.last_activity_date ? new Date(c.last_activity_date) : null,
-        lastSentDate: c.last_sent_date ? new Date(c.last_sent_date) : null,
-        lastReceivedDate: c.last_received_date ? new Date(c.last_received_date) : null,
-        // DB-loaded: flag + original counts so we never filter these out or lose counts
-        _fromDb: true,
-        _dbSentCount: c.sent_count || 0,
-        _dbReceivedCount: c.received_count || 0,
-        // ── All metadata lives directly on domainMap entries (single source of truth) ──
-        is_starred: !!c.is_starred,
-        is_blocked: !!c.is_blocked,
-        is_flagged: !!c.is_flagged,
-        is_followup: !!c.is_followup,
-        is_archived: !!c.is_archived,
-        company_type: c.company_type ? c.company_type.replace(/\b\w/g, l => l.toUpperCase()) : null,
-        proposal_stage: c.proposal_stage || null,
-        proposal_notes: c.proposal_notes || null,
-        followup_date: c.followup_date || null,
-        merged_into: c.merged_into || null,
-      };
+      if (!newDomainMap[domainKey]) {
+        newDomainMap[domainKey] = {
+          contacts: {},
+          sentIds: new Set(),
+          receivedIds: new Set(),
+          lastDate: c.last_activity_date ? new Date(c.last_activity_date) : null,
+          lastSentDate: c.last_sent_date ? new Date(c.last_sent_date) : null,
+          lastReceivedDate: c.last_received_date ? new Date(c.last_received_date) : null,
+          _fromDb: true,
+          _dbSentCount: c.sent_count || 0,
+          _dbReceivedCount: c.received_count || 0,
+          is_starred: !!c.is_starred,
+          is_blocked: !!c.is_blocked,
+          is_flagged: !!c.is_flagged,
+          is_followup: !!c.is_followup,
+          is_archived: !!c.is_archived,
+          company_type: c.company_type ? c.company_type.replace(/\b\w/g, l => l.toUpperCase()) : null,
+          proposal_stage: c.proposal_stage || null,
+          proposal_notes: c.proposal_notes || null,
+          followup_date: c.followup_date || null,
+          merged_into: c.merged_into || null,
+        };
+      } else {
+        // Merge duplicate DB rows (case variants) — preserve truthy metadata
+        var existing = newDomainMap[domainKey];
+        if (c.last_activity_date) { var ld = new Date(c.last_activity_date); if (!existing.lastDate || ld > existing.lastDate) existing.lastDate = ld; }
+        existing._dbSentCount = Math.max(existing._dbSentCount || 0, c.sent_count || 0);
+        existing._dbReceivedCount = Math.max(existing._dbReceivedCount || 0, c.received_count || 0);
+        if (c.is_followup) existing.is_followup = true;
+        if (c.followup_date && !existing.followup_date) existing.followup_date = c.followup_date;
+        if (c.is_starred) existing.is_starred = true;
+        if (c.is_blocked) existing.is_blocked = true;
+        if (c.is_flagged) existing.is_flagged = true;
+        if (c.is_archived) existing.is_archived = true;
+        if (c.company_type && !existing.company_type) existing.company_type = c.company_type.replace(/\b\w/g, l => l.toUpperCase());
+        if (c.proposal_stage && !existing.proposal_stage) existing.proposal_stage = c.proposal_stage;
+        if (c.merged_into && !existing.merged_into) existing.merged_into = c.merged_into;
+      }
       // Restore caches from company row
       if (c.company_name) companyNameCache[domainKey] = c.company_name;
       if (c.enrichment && Object.keys(c.enrichment).length > 0) enrichmentCache[domainKey] = c.enrichment;
@@ -5881,8 +5914,9 @@ function toggleFollowUp(domain) {
 
 function setFollowUpDate(domain, date) {
   ensureDomain(domain);
-  domainMap[domain].followup_date = date || null;
-  supabaseSaveCompanyField(domain, 'followup_date', date || null);
+  var dateVal = date || null;
+  domainMap[domain].followup_date = dateVal;
+  supabaseSaveCompanyField(domain, 'followup_date', dateVal);
   saveLocalCache();
   renderTable();
 }
