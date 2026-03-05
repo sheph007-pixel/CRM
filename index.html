@@ -191,9 +191,6 @@ th.col-check,td.col-check{width:40px;text-align:center;padding:10px 8px 10px 14p
 .flagged-filter-bar .ff-reset{font-size:11px;color:var(--red);border-color:var(--red)}
 
 .company-cell{display:flex;align-items:center;gap:10px}
-.row-star{background:none;border:none;cursor:pointer;font-size:16px;color:var(--border);padding:0 2px;transition:.15s;flex-shrink:0;line-height:1}
-.row-star:hover{color:#f5a623}
-.row-star.active{color:#f5a623}
 .row-flag{background:none;border:none;cursor:pointer;font-size:14px;color:var(--border);padding:0 2px;transition:.15s;flex-shrink:0;line-height:1;display:inline-flex;align-items:center}
 .row-flag:hover{color:#e8453c}
 .row-flag.active{color:#e8453c}
@@ -355,9 +352,6 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
 .edit-pencil-icon:hover{opacity:1;color:var(--accent)!important}
 .dp-contact .dp-ct-email{font-size:10px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dp-contact .dp-ct-count{font-size:11px;color:var(--text2);flex-shrink:0;font-weight:600}
-.dp-star{background:none;border:none;cursor:pointer;font-size:15px;color:var(--border);padding:2px;transition:.15s;flex-shrink:0;line-height:1}
-.dp-star:hover{color:var(--orange);transform:scale(1.15)}
-.dp-star.active{color:var(--orange)}
 .dp-flag{background:none;border:none;cursor:pointer;color:var(--border);padding:2px;transition:.15s;flex-shrink:0;line-height:1;display:inline-flex;align-items:center}
 .dp-flag:hover{color:#e8453c;transform:scale(1.15)}
 .dp-flag.active{color:#e8453c}
@@ -795,11 +789,6 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
       Emails
       <span class="sidebar-badge inbox-badge-new" id="inboxCount" style="display:none"><span id="inboxCountNum">0</span></span>
-    </div>
-    <div class="sidebar-item" id="proposalNavItem" onclick="showProposals()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-      Proposals
-      <span class="sidebar-badge" id="proposalCount" style="background:#f5a623">0</span>
     </div>
     <div class="sidebar-item" id="followUpNavItem" onclick="showFollowUp()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
@@ -1327,10 +1316,6 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
 <div class="bulk-bar" id="bulkBar">
   <span class="bulk-count" id="bulkCount">0 selected</span>
   <div class="bulk-sep"></div>
-  <button class="btn btn-ghost btn-sm" onclick="bulkStarSelected()" style="color:#f5a623;border-color:#f5a623">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-    Star
-  </button>
   <button class="btn btn-ghost btn-sm" onclick="bulkArchiveSelected()">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
     Archive
@@ -2123,15 +2108,6 @@ function isBlockedDomain(domain) {
   return SKIP_DOMAINS.has(domain) || !!(domainMap[domain] && domainMap[domain].is_blocked);
 }
 
-// ──────────────────────────────────────────────
-// STARRED COMPANIES / PROPOSALS (metadata lives on domainMap entries)
-// ──────────────────────────────────────────────
-function loadStarredCompanies() { /* no-op: metadata loaded from DB onto domainMap entries */ }
-function saveStarredCompanies() { scheduleSupabaseSync(); }
-
-function loadProposalData() { /* no-op: metadata loaded from DB onto domainMap entries */ }
-function saveProposalNotes() { scheduleSupabaseSync(); }
-function saveProposalStages() { scheduleSupabaseSync(); }
 
 // ──────────────────────────────────────────────
 // FOLLOW UP COMPANIES (metadata lives on domainMap entries)
@@ -4338,14 +4314,12 @@ function buildCellHTML(col, c, color) {
   if (col.type === 'builtin') {
     switch (col.id) {
       case 'company':
-        var isStarred = !!(domainMap[c.domain] && domainMap[c.domain].is_starred);
         var isFollowUp = !!(domainMap[c.domain] && domainMap[c.domain].is_followup);
         var starDSafe = c.domain.replace(/'/g, "\\'");
         var mergeIndicator = (c.mergedAliases && c.mergedAliases.length > 0)
           ? '<span style="font-size:9px;font-weight:600;padding:1px 5px;border-radius:4px;background:rgba(147,52,230,.1);color:#9334e6;margin-left:4px" title="Merged with: ' + c.mergedAliases.join(', ') + '">+' + c.mergedAliases.length + '</span>'
           : '';
         return '<div class="company-cell">' +
-          '<button class="row-star' + (isStarred ? ' active' : '') + '" onclick="event.stopPropagation();toggleCompanyStar(\'' + starDSafe + '\')" title="' + (isStarred ? 'Remove from Proposals' : 'Add to Proposals') + '">&#9733;</button>' +
           '<button class="row-flag' + (isFollowUp ? ' active' : '') + '" onclick="event.stopPropagation();toggleFollowUp(\'' + starDSafe + '\')" title="' + (isFollowUp ? 'Remove from Follow Up' : 'Flag for Follow Up') + '"><svg viewBox="0 0 24 24" fill="' + (isFollowUp ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></button>' +
           '<div class="company-logo" style="background:' + color + '">' + companyLogoHTML(c.domain, color, c.name) + '</div><div class="company-info"><span class="company-name">' + esc(c.name) + mergeIndicator + '</span><span class="company-domain">' + esc(displayDomain(c.domain)) + (c.mergedAliases && c.mergedAliases.length > 0 ? ', ' + c.mergedAliases.map(displayDomain).join(', ') : '') + '</span></div></div>';
       case 'contact':
@@ -4381,157 +4355,7 @@ function buildCellHTML(col, c, color) {
   return '<span class="cell-val">' + esc(val) + '</span>';
 }
 
-// ── PROPOSALS TABLE ──
-var PROPOSAL_STAGES = [
-  { value: '', label: 'No Stage', color: 'var(--text2)', bg: 'transparent' },
-  { value: 'Proposal Due', label: 'Proposal Due', color: '#d93025', bg: 'rgba(217,48,37,.1)' },
-  { value: 'Proposal Sent', label: 'Proposal Sent', color: '#e8710a', bg: 'rgba(232,113,10,.1)' },
-  { value: 'Onboarding', label: 'Onboarding', color: '#1e8e3e', bg: 'rgba(30,142,62,.1)' },
-];
 
-function setProposalStage(domain, value) {
-  ensureDomain(domain);
-  domainMap[domain].proposal_stage = value || null;
-  saveProposalStages();
-  supabaseSaveCompanyField(domain, 'proposal_stage', value || null);
-  var sel = document.querySelector('select.proposal-stage[data-domain="' + domain + '"]');
-  if (sel) {
-    var st = PROPOSAL_STAGES.find(function(s) { return s.value === value; }) || PROPOSAL_STAGES[0];
-    sel.style.color = st.color;
-    sel.style.background = st.bg;
-    sel.style.borderColor = st.color;
-  }
-}
-
-function setProposalNote(domain, value) {
-  ensureDomain(domain);
-  domainMap[domain].proposal_notes = value.trim() || null;
-  saveProposalNotes();
-  supabaseSaveCompanyField(domain, 'proposal_notes', value.trim() || null);
-}
-
-function renderProposalsTable() {
-  // If a note input is focused, skip re-render to avoid destroying user's typing
-  var activeEl = document.activeElement;
-  if (activeEl && activeEl.classList && activeEl.classList.contains('proposal-note-input')) {
-    return;
-  }
-
-  var thead = document.getElementById('tableHead');
-  thead.innerHTML = '';
-
-  var data = companies.filter(function(c) {
-    var dm = domainMap[c.domain];
-    return dm && dm.is_starred && !dm.is_archived && !dm.is_flagged;
-  });
-
-  var q = (document.getElementById('searchInput').value || '').toLowerCase();
-  if (q) {
-    data = data.filter(function(c) {
-      var dm = domainMap[c.domain];
-      return c.name.toLowerCase().includes(q) || c.contact.toLowerCase().includes(q) || c.domain.toLowerCase().includes(q)
-        || ((dm && dm.proposal_notes) || '').toLowerCase().includes(q)
-        || ((dm && dm.proposal_stage) || '').toLowerCase().includes(q);
-    });
-  }
-
-  // Sort alphabetically within each group
-  data.sort(function(a, b) {
-    var va = (a.name || '').toLowerCase();
-    var vb = (b.name || '').toLowerCase();
-    if (va < vb) return -1;
-    if (va > vb) return 1;
-    return 0;
-  });
-
-  var tbody = document.getElementById('tableBody');
-  if (data.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;padding:40px;color:var(--text2)">No proposals yet. Star a company to add it here.</td></tr>';
-    updateViewTitleCount(0);
-    return;
-  }
-
-  // Group data by stage in order: Proposal Due, Proposal Sent, Onboarding, No Stage
-  var stageOrder = ['Proposal Due', 'Proposal Sent', 'Onboarding', ''];
-  var stageLabels = { 'Proposal Due': 'Proposal Due', 'Proposal Sent': 'Proposal Sent', 'Onboarding': 'Onboarding', '': 'No Stage' };
-  var stageColors = { 'Proposal Due': '#d93025', 'Proposal Sent': '#e8710a', 'Onboarding': '#1e8e3e', '': 'var(--text2)' };
-  var stageBgs = { 'Proposal Due': 'rgba(217,48,37,.1)', 'Proposal Sent': 'rgba(232,113,10,.1)', 'Onboarding': 'rgba(30,142,62,.1)', '': 'transparent' };
-
-  var groups = {};
-  for (var g = 0; g < stageOrder.length; g++) groups[stageOrder[g]] = [];
-  for (var i = 0; i < data.length; i++) {
-    var stage = (domainMap[data[i].domain] && domainMap[data[i].domain].proposal_stage) || '';
-    if (!groups[stage]) groups[stage] = [];
-    groups[stage].push(data[i]);
-  }
-
-  var rows = [];
-  for (var gi = 0; gi < stageOrder.length; gi++) {
-    var stageKey = stageOrder[gi];
-    var items = groups[stageKey];
-    if (items.length === 0) continue;
-
-    var sColor = stageColors[stageKey];
-    var sBg = stageBgs[stageKey];
-    var sLabel = stageLabels[stageKey];
-
-    // Stage section header
-    rows.push('<tr class="proposal-stage-header" style="pointer-events:none">'
-      + '<td colspan="3" style="padding:16px 12px 8px 12px;border-bottom:2px solid ' + sColor + ';background:transparent">'
-      + '<div style="display:flex;align-items:center;gap:10px">'
-      + '<span style="display:inline-flex;align-items:center;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;letter-spacing:.3px;color:' + sColor + ';background:' + sBg + ';border:1px solid ' + sColor + '">' + sLabel + '</span>'
-      + '<span style="font-size:12px;color:var(--text2);font-weight:500">' + items.length + (items.length === 1 ? ' company' : ' companies') + '</span>'
-      + '</div></td></tr>');
-
-    for (var j = 0; j < items.length; j++) {
-      var c = items[j];
-      var color = COLORS[c.id % COLORS.length];
-      var sel = selectedIds.has(c.id);
-      var dSafe = c.domain.replace(/'/g, "\\'");
-      var curStage = (domainMap[c.domain] && domainMap[c.domain].proposal_stage) || '';
-      var stageDef = PROPOSAL_STAGES.find(function(s) { return s.value === curStage; }) || PROPOSAL_STAGES[0];
-      var note = (domainMap[c.domain] && domainMap[c.domain].proposal_notes) || '';
-
-      var row = '<tr' + (sel ? ' class="row-selected"' : '') + ' data-id="' + c.id + '">';
-      row += '<td class="col-check" style="width:30px"><input type="checkbox" class="row-checkbox"' + (sel ? ' checked' : '') + ' data-rid="' + c.id + '"></td>';
-
-      // Company
-      var isStarred = !!(domainMap[c.domain] && domainMap[c.domain].is_starred);
-      var isFollowUpP = !!(domainMap[c.domain] && domainMap[c.domain].is_followup);
-      row += '<td><div class="company-cell">'
-        + '<button class="row-star' + (isStarred ? ' active' : '') + '" onclick="event.stopPropagation();toggleCompanyStar(\'' + dSafe + '\')" title="Remove from Proposals">&#9733;</button>'
-        + '<button class="row-flag' + (isFollowUpP ? ' active' : '') + '" onclick="event.stopPropagation();toggleFollowUp(\'' + dSafe + '\')" title="' + (isFollowUpP ? 'Remove from Follow Up' : 'Flag for Follow Up') + '"><svg viewBox="0 0 24 24" fill="' + (isFollowUpP ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></button>'
-        + '<div class="company-logo" style="background:' + color + '">' + companyLogoHTML(c.domain, color, c.name) + '</div>'
-        + '<div class="company-info"><span class="company-name">' + esc(c.name) + '</span><span class="company-domain">' + esc(displayDomain(c.domain)) + '</span></div>'
-        + '</div></td>';
-
-      // Notes + Stage combined cell
-      row += '<td style="width:40%"><div style="display:flex;gap:8px;align-items:center">'
-        + '<input type="text" class="proposal-note-input" data-domain="' + esc(c.domain) + '" value="' + esc(note).replace(/"/g, '&quot;') + '" placeholder="Add a note..." '
-        + 'onclick="event.stopPropagation()" '
-        + 'onfocus="event.stopPropagation()" '
-        + 'onblur="setProposalNote(\'' + dSafe + '\',this.value)" '
-        + 'onkeydown="event.stopPropagation();if(event.key===\'Enter\'){this.blur()}" '
-        + 'style="flex:1;padding:6px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;box-sizing:border-box">'
-        + '<select class="proposal-stage" data-domain="' + esc(c.domain) + '" '
-        + 'onclick="event.stopPropagation()" '
-        + 'onchange="setProposalStage(\'' + dSafe + '\',this.value);renderTable()" '
-        + 'style="min-width:130px;padding:6px 10px;border-radius:6px;font-size:12px;font-family:inherit;font-weight:600;outline:none;cursor:pointer;border:1px solid ' + stageDef.color + ';color:' + stageDef.color + ';background:' + stageDef.bg + '">';
-      for (var si = 0; si < PROPOSAL_STAGES.length; si++) {
-        var s = PROPOSAL_STAGES[si];
-        row += '<option value="' + s.value + '"' + (curStage === s.value ? ' selected' : '') + '>' + s.label + '</option>';
-      }
-      row += '</select></div></td>';
-
-      row += '</tr>';
-      rows.push(row);
-    }
-  }
-
-  tbody.innerHTML = rows.join('');
-  updateBulkBar();
-  updateViewTitleCount(data.length);
-}
 
 // Map sort column IDs to actual data properties
 function _getSortVal(c, colKey) {
@@ -4551,9 +4375,7 @@ function renderTable() {
   if (showingFlagged) { showFlaggedView(); return; }
   if (showingBlocked) { return; }
   if (showingFollowUp) { renderFollowUpTable(); return; }
-  if (showingProposals) { renderProposalsTable(); return; }
-
-  // Restore stats section (hidden by proposals view)
+  // Restore stats section
   document.getElementById('statsSection').style.display = '';
 
   // Restore columns button (hidden by follow-up view)
@@ -4682,7 +4504,7 @@ function updateStats() {
   document.getElementById('leadsCount').textContent = leads.toLocaleString();
   document.getElementById('currentClientCount').textContent = existing.toLocaleString();
   document.getElementById('oldClientCount').textContent = old.toLocaleString();
-  updateProposalCount();
+
   updateArchivedCount();
   // Save snapshot for instant render on next page load
   saveInstantSnapshot();
@@ -4723,7 +4545,6 @@ function updateViewTitleCount(count) {
 function filterByType(type, el) {
   currentTypeFilter = type;
   tableShowAll = false;
-  showingProposals = false;
   showingArchived = false;
   showingFlagged = false;
   showingFollowUp = false; hideFollowUpKanban();
@@ -4757,7 +4578,6 @@ function filterByStatCard(type, el) {
   currentTypeFilter = type;
   currentFilter = 'all';
   tableShowAll = false;
-  showingProposals = false;
   showingArchived = false;
   showingFlagged = false;
   showingFollowUp = false; hideFollowUpKanban();
@@ -5082,7 +4902,6 @@ function filterByStatus(status, el) {
   currentFilter = 'all';
   currentTypeFilter = status === 'all' ? 'all' : status;
   tableShowAll = false;
-  showingProposals = false;
   showingArchived = false;
   showingFlagged = false;
   showingFollowUp = false; hideFollowUpKanban();
@@ -5103,7 +4922,6 @@ function filterByClientType(type, el) {
   currentFilter = 'all';
   currentTypeFilter = type;
   tableShowAll = false;
-  showingProposals = false;
   showingArchived = false;
   showingFlagged = false;
   showingFollowUp = false; hideFollowUpKanban();
@@ -5226,7 +5044,6 @@ function updateBlockedSyncStatus() {
 }
 
 function showBlockedView() {
-  showingProposals = false;
   showingArchived = false;
   showingFlagged = false;
   showingFollowUp = false; hideFollowUpKanban();
@@ -5379,7 +5196,6 @@ function openFlaggedDetail(domain) {
 }
 
 function showFlaggedView() {
-  showingProposals = false;
   showingArchived = false;
   showingFlagged = true;
   showingFollowUp = false; hideFollowUpKanban();
@@ -6020,52 +5836,8 @@ async function fullDomainRescan() {
   updateLastScanLabel();
 }
 
-// ──────────────────────────────────────────────
-// STARRED COMPANIES (Proposals)
-// ──────────────────────────────────────────────
-let showingProposals = false;
 let showingFlagged = false;
 let showingBlocked = false;
-
-function toggleCompanyStar(domain) {
-  ensureDomain(domain);
-  domainMap[domain].is_starred = !domainMap[domain].is_starred;
-  saveStarredCompanies();
-  supabaseSaveCompanyField(domain, 'is_starred', domainMap[domain].is_starred);
-  updateProposalCount();
-  renderTable();
-}
-
-function showProposals() {
-  showingProposals = true;
-  showingArchived = false;
-  showingFlagged = false;
-  showingFollowUp = false; hideFollowUpKanban();
-  currentFilter = 'all';
-  currentTypeFilter = 'all';
-  tableShowAll = false;
-  hideInbox(); hideSettingsView(); hideBlockedView();
-  document.getElementById('crmContent').classList.add('active');
-  document.getElementById('crmContent').style.display = '';
-  document.getElementById('detailPage').classList.remove('active');
-  document.querySelectorAll('.sidebar-item').forEach(e => e.classList.remove('active'));
-  document.getElementById('proposalNavItem').classList.add('active');
-  // Hide stats cards — not relevant for proposals view
-  document.getElementById('statsSection').style.display = 'none';
-  setViewTitle('Proposals', false);
-  clearSelection();
-  renderTable();
-}
-
-function updateProposalCount() {
-  const el = document.getElementById('proposalCount');
-  if (!el) return;
-  var count = 0;
-  for (var d in domainMap) {
-    if (domainMap[d].is_starred && !domainMap[d].is_archived && !domainMap[d].is_flagged && !domainMap[d].is_blocked) count++;
-  }
-  el.textContent = count;
-}
 
 // ──────────────────────────────────────────────
 // FOLLOW UP
@@ -6096,7 +5868,6 @@ function setFollowUpDate(domain, date) {
 
 function showFollowUp() {
   showingFollowUp = true;
-  showingProposals = false;
   showingArchived = false;
   showingFlagged = false;
   currentFilter = 'all';
@@ -6336,11 +6107,8 @@ let showingArchived = false;
 function archiveCompany(domain) {
   ensureDomain(domain);
   domainMap[domain].is_archived = true;
-  domainMap[domain].is_starred = false;
   supabaseSaveCompanyField(domain, 'is_archived', true);
-  supabaseSaveCompanyField(domain, 'is_starred', false);
   updateArchivedCount();
-  updateProposalCount();
   buildCompaniesFromDomainMap();
   updateStats();
   renderTable();
@@ -6356,7 +6124,6 @@ function unarchiveCompany(domain) {
 }
 
 function showArchivedView() {
-  showingProposals = false;
   showingArchived = true;
   showingFlagged = false;
   showingFollowUp = false; hideFollowUpKanban();
@@ -6419,27 +6186,16 @@ function bulkArchiveSelected() {
   for (const d of domains) {
     ensureDomain(d.toLowerCase());
     domainMap[d.toLowerCase()].is_archived = true;
-    domainMap[d.toLowerCase()].is_starred = false;
     supabaseSaveCompanyField(d.toLowerCase(), 'is_archived', true);
-    supabaseSaveCompanyField(d.toLowerCase(), 'is_starred', false);
   }
   selectedIds.clear();
   buildCompaniesFromDomainMap();
   renderTable();
   updateStats();
   updateArchivedCount();
-  updateProposalCount();
+
 }
 
-function bulkStarSelected() {
-  for (const id of selectedIds) {
-    const c = companies.find(x => x.id === id);
-    if (c) { ensureDomain(c.domain); domainMap[c.domain].is_starred = true; supabaseSaveCompanyField(c.domain, 'is_starred', true); }
-  }
-  selectedIds.clear();
-  updateProposalCount();
-  renderTable();
-}
 
 // ──────────────────────────────────────────────
 // ADD COMPANY MANUALLY (with duplicate check & email scan)
@@ -6627,7 +6383,6 @@ async function addCompanyManually() {
   buildCompaniesFromDomainMap();
   updateStats();
   renderTable();
-  updateProposalCount();
   updateArchivedCount();
 
   // Now scan emails for this domain in the background
@@ -6903,13 +6658,11 @@ function showCompanyPanel(id) {
   const scoreColor = c.score >= 75 ? 'var(--green)' : c.score >= 50 ? 'var(--orange)' : 'var(--red)';
 
   // ── Full-width company banner ──
-  var isStarredH = !!(domainMap[c.domain] && domainMap[c.domain].is_starred);
   var dSafeH = c.domain.replace(/'/g, "\\'");
   let bannerHtml = '<div class="dp-company-head">' +
     '<div class="dp-co-logo" style="background:' + color + '">' + companyLogoHTML(c.domain, color, c.name, 48) + '</div>' +
     '<div class="dp-co-info"><div style="display:flex;align-items:center;gap:6px"><h2 class="editable-name" style="margin:0;cursor:text" contenteditable="false" id="dpCompanyName" onclick="this.contentEditable=\'true\';this.focus()" onblur="saveCompanyNameEdit(\'' + esc(c.domain).replace(/'/g,"\\'") + '\',this)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur()}">' + esc(c.name) + '</h2>' +
       '<svg class="edit-pencil-icon" onclick="var h=document.getElementById(\'dpCompanyName\');h.contentEditable=\'true\';h.focus()" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="cursor:pointer;color:var(--text3);flex-shrink:0"><path d="M17 3a2.83 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>' +
-      '<button class="dp-star' + (isStarredH ? ' active' : '') + '" onclick="event.stopPropagation();toggleCompanyStar(\'' + dSafeH + '\');showCompanyPanel(' + c.id + ')" title="' + (isStarredH ? 'Remove from Proposals' : 'Add to Proposals') + '" style="font-size:18px">&#9733;</button>' +
       '<button class="dp-flag' + (!!(domainMap[c.domain] && domainMap[c.domain].is_followup) ? ' active' : '') + '" onclick="event.stopPropagation();toggleFollowUp(\'' + dSafeH + '\');showCompanyPanel(' + c.id + ')" title="' + (!!(domainMap[c.domain] && domainMap[c.domain].is_followup) ? 'Remove from Follow Up' : 'Flag for Follow Up') + '"><svg viewBox="0 0 24 24" fill="' + (!!(domainMap[c.domain] && domainMap[c.domain].is_followup) ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></button></div>' +
       '<div class="dp-domain">' +
         '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
@@ -6974,31 +6727,7 @@ function showCompanyPanel(id) {
 
   document.getElementById('dpCompanyBanner').innerHTML = bannerHtml;
 
-  // Proposal notes section (below banner)
-  var dpNote = (domainMap[c.domain] && domainMap[c.domain].proposal_notes) || '';
-  var dpStage = (domainMap[c.domain] && domainMap[c.domain].proposal_stage) || '';
-  var dpStageDef = PROPOSAL_STAGES.find(function(s) { return s.value === dpStage; }) || PROPOSAL_STAGES[0];
-  var dSafeDP = c.domain.replace(/'/g, "\\'");
-  document.getElementById('dpLeftHead').innerHTML =
-    '<div style="padding:10px 16px;display:flex;flex-direction:column;gap:8px">' +
-      '<div style="display:flex;align-items:center;gap:8px">' +
-        '<span style="font-size:11px;color:var(--text2);min-width:40px">Stage</span>' +
-        '<select class="proposal-stage" data-domain="' + esc(c.domain) + '" ' +
-          'onchange="setProposalStage(\'' + dSafeDP + '\',this.value);this.style.color=({\'Proposal Due\':\'#d93025\',\'Proposal Sent\':\'#e8710a\',\'Onboarding\':\'#1e8e3e\'}[this.value]||\'var(--text2)\');this.style.borderColor=this.style.color;this.style.background=({\'Proposal Due\':\'rgba(217,48,37,.1)\',\'Proposal Sent\':\'rgba(232,113,10,.1)\',\'Onboarding\':\'rgba(30,142,62,.1)\'}[this.value]||\'transparent\')" ' +
-          'style="flex:1;padding:6px 10px;border-radius:6px;font-size:12px;font-family:inherit;font-weight:600;outline:none;cursor:pointer;border:1px solid ' + dpStageDef.color + ';color:' + dpStageDef.color + ';background:' + dpStageDef.bg + '">' +
-          '<option value=""' + (!dpStage ? ' selected' : '') + '>No Stage</option>' +
-          '<option value="Proposal Due"' + (dpStage === 'Proposal Due' ? ' selected' : '') + '>Proposal Due</option>' +
-          '<option value="Proposal Sent"' + (dpStage === 'Proposal Sent' ? ' selected' : '') + '>Proposal Sent</option>' +
-          '<option value="Onboarding"' + (dpStage === 'Onboarding' ? ' selected' : '') + '>Onboarding</option>' +
-        '</select>' +
-      '</div>' +
-      '<div style="display:flex;align-items:start;gap:8px">' +
-        '<span style="font-size:11px;color:var(--text2);min-width:40px;padding-top:7px">Notes</span>' +
-        '<textarea data-domain="' + esc(c.domain) + '" placeholder="Add notes about this company..." ' +
-          'onchange="setProposalNote(\'' + dSafeDP + '\',this.value)" ' +
-          'style="flex:1;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;outline:none;resize:vertical;min-height:50px;box-sizing:border-box">' + esc(dpNote) + '</textarea>' +
-      '</div>' +
-    '</div>';
+  document.getElementById('dpLeftHead').innerHTML = '';
 
   // Left panel tabs (Relationships / Files)
   currentLeftTab = 'relationships';
@@ -7037,7 +6766,6 @@ function showCompanyPanel(id) {
 
   // Left footer
   var dSafeF = c.domain.replace(/'/g, "\\'");
-  var isStarredF = !!(domainMap[c.domain] && domainMap[c.domain].is_starred);
   var isArchivedF = !!(domainMap[c.domain] && domainMap[c.domain].is_archived);
   document.getElementById('dpLeftFoot').innerHTML =
     '<div style="display:flex;flex-direction:column;gap:6px">' +
@@ -8373,7 +8101,6 @@ async function testSupabaseConnection() {
 }
 
 function showSettingsView() {
-  showingProposals = false;
   showingArchived = false;
   showingFlagged = false;
   showingFollowUp = false; hideFollowUpKanban();
@@ -8530,14 +8257,11 @@ function blockDomainFromDetail(domain) {
 function archiveCompanyFromDetail(domain) {
   ensureDomain(domain.toLowerCase());
   domainMap[domain.toLowerCase()].is_archived = true;
-  domainMap[domain.toLowerCase()].is_starred = false;
   supabaseSaveCompanyField(domain.toLowerCase(), 'is_archived', true);
-  supabaseSaveCompanyField(domain.toLowerCase(), 'is_starred', false);
   buildCompaniesFromDomainMap();
   renderTable();
   updateStats();
   updateArchivedCount();
-  updateProposalCount();
   closePanel();
 }
 
@@ -8576,7 +8300,6 @@ let inboxCurrentTab = 'all';
 let inboxLoading = false;
 
 function showInbox() {
-  showingProposals = false;
   showingArchived = false;
   showingFlagged = false;
   showingFollowUp = false; hideFollowUpKanban();
@@ -9535,10 +9258,6 @@ async function aiExecuteAction(action) {
       supabaseSaveCompanyField(action.domain, 'is_blocked', true);
       return 'Blocked ' + action.domain;
     }
-    if (action.type === 'star_company' && action.domain) {
-      toggleCompanyStar(action.domain);
-      return 'Toggled star for ' + action.domain;
-    }
     if (action.type === 'compose_email' && action.to) {
       openCompose(action.to, action.name || '', action.subject || '', '', '', '');
       if (action.body) {
@@ -9585,8 +9304,6 @@ function esc(text) {
 (async function init() {
   const pageStart = Date.now();
   loadBlockedDomains();
-  loadStarredCompanies();
-  loadProposalData();
   loadFollowUpData();
   loadArchivedCompanies();
   loadFlaggedCompanies();
