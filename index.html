@@ -638,10 +638,16 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
 .blocked-page-search-wrap{position:relative;flex:1;max-width:300px}
 .blocked-page-search-wrap svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--text2);pointer-events:none}
 .blocked-page-list{flex:1;overflow-y:auto;padding:8px 20px 20px}
-.blocked-domain-row{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;transition:.12s}
-.blocked-domain-row:hover{background:var(--surface2)}
-.blocked-domain-icon{width:32px;height:32px;border-radius:8px;background:var(--red);opacity:.7;display:grid;place-items:center;color:#fff;font-weight:600;font-size:14px;flex-shrink:0}
-.blocked-domain-info{flex:1;display:flex;flex-direction:column;gap:2px}
+.blocked-table{width:100%;border-collapse:collapse}
+.blocked-table th{text-align:left;font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.3px;padding:8px 10px;border-bottom:1px solid var(--border);cursor:pointer;user-select:none;white-space:nowrap}
+.blocked-table th:hover{color:var(--text)}
+.blocked-table th .sort-arrow{font-size:10px;margin-left:3px;opacity:.5}
+.blocked-table th.sorted .sort-arrow{opacity:1;color:var(--blue)}
+.blocked-table td{padding:8px 10px;border-bottom:1px solid var(--border);font-size:13px;color:var(--text)}
+.blocked-table tr:hover td{background:var(--surface2)}
+.blocked-domain-icon{width:28px;height:28px;border-radius:6px;background:var(--red);opacity:.7;display:inline-grid;place-items:center;color:#fff;font-weight:600;font-size:12px;flex-shrink:0}
+.blocked-domain-cell{display:flex;align-items:center;gap:10px}
+.blocked-domain-info{display:flex;flex-direction:column;gap:1px}
 .blocked-domain-name{font-size:13px;font-weight:500;color:var(--text)}
 .blocked-domain-meta{font-size:11px;color:var(--text2)}
 .blocked-domain-unblock{padding:5px 12px;font-size:11px;border-radius:6px;border:1px solid var(--green);color:var(--green);background:none;cursor:pointer;transition:.15s;white-space:nowrap}
@@ -5250,33 +5256,90 @@ function hideBlockedView() {
   document.getElementById('blockedPageView').classList.remove('active');
 }
 
+var blockedSortCol = 'total';
+var blockedSortAsc = false;
+
+function sortBlockedBy(col) {
+  if (blockedSortCol === col) { blockedSortAsc = !blockedSortAsc; }
+  else { blockedSortCol = col; blockedSortAsc = col === 'domain'; }
+  renderBlockedPage();
+}
+
 function renderBlockedPage() {
   const q = (document.getElementById('blockedPageSearch').value || '').toLowerCase();
-  const sorted = dmFilter('is_blocked').sort();
-  const filtered = q ? sorted.filter(d => d.toLowerCase().includes(q)) : sorted;
-  var totalBlocked = sorted.length;
+  var allDomains = dmFilter('is_blocked');
+  var totalBlocked = allDomains.length;
+  var filtered = q ? allDomains.filter(function(d) { return d.toLowerCase().includes(q); }) : allDomains;
+
+  // Build data with counts
+  var rows = filtered.map(function(domain) {
+    var data = domainMap[domain];
+    var sent = data ? Math.max(data.sentIds ? data.sentIds.size : 0, data._dbSentCount || 0) : 0;
+    var recv = data ? Math.max(data.receivedIds ? data.receivedIds.size : 0, data._dbReceivedCount || 0) : 0;
+    var contacts = data ? Object.keys(data.contacts).length : 0;
+    var lastDate = data ? (data.lastDate || null) : null;
+    return { domain: domain, data: data, sent: sent, received: recv, total: sent + recv, contacts: contacts, lastDate: lastDate };
+  });
+
+  // Sort
+  var col = blockedSortCol;
+  var asc = blockedSortAsc;
+  rows.sort(function(a, b) {
+    var va, vb;
+    if (col === 'domain') { va = a.domain.toLowerCase(); vb = b.domain.toLowerCase(); return asc ? va.localeCompare(vb) : vb.localeCompare(va); }
+    if (col === 'last') {
+      va = a.lastDate ? a.lastDate.getTime() : 0;
+      vb = b.lastDate ? b.lastDate.getTime() : 0;
+    } else {
+      va = a[col] || 0; vb = b[col] || 0;
+    }
+    return asc ? va - vb : vb - va;
+  });
 
   document.getElementById('blockedPageCount').textContent = totalBlocked + ' domain' + (totalBlocked !== 1 ? 's' : '') + (q ? ' (' + filtered.length + ' shown)' : '');
 
   const list = document.getElementById('blockedPageList');
-  if (!filtered.length) {
+  if (!rows.length) {
     list.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text2)">' + (q ? 'No blocked domains match "' + esc(q) + '"' : 'No blocked domains yet. Domains you block will appear here.') + '</div>';
     return;
   }
 
-  list.innerHTML = filtered.map(domain => {
-    const data = domainMap[domain];
-    const contactCount = data ? Object.keys(data.contacts).length : 0;
-    const meta = contactCount > 0 ? contactCount + ' contact' + (contactCount !== 1 ? 's' : '') : '';
-    return '<div class="blocked-domain-row">' +
-      '<div class="blocked-domain-icon">' + domain[0].toUpperCase() + '</div>' +
-      '<div class="blocked-domain-info">' +
-        '<span class="blocked-domain-name">' + esc(displayDomain(domain)) + '</span>' +
-        (meta ? '<span class="blocked-domain-meta">' + meta + '</span>' : '') +
-      '</div>' +
-      '<button class="blocked-domain-unblock" onclick="unblockDomain(\'' + domain.replace(/'/g, "\\'") + '\')">Unblock</button>' +
-    '</div>';
-  }).join('');
+  function thArrow(c) { return '<span class="sort-arrow">' + (blockedSortCol === c ? (blockedSortAsc ? '&#9650;' : '&#9660;') : '&#9650;') + '</span>'; }
+  function thClass(c) { return blockedSortCol === c ? ' class="sorted"' : ''; }
+
+  var html = '<table class="blocked-table"><thead><tr>' +
+    '<th' + thClass('domain') + ' onclick="sortBlockedBy(\'domain\')">Domain ' + thArrow('domain') + '</th>' +
+    '<th' + thClass('sent') + ' onclick="sortBlockedBy(\'sent\')" style="text-align:right">Sent ' + thArrow('sent') + '</th>' +
+    '<th' + thClass('received') + ' onclick="sortBlockedBy(\'received\')" style="text-align:right">Received ' + thArrow('received') + '</th>' +
+    '<th' + thClass('total') + ' onclick="sortBlockedBy(\'total\')" style="text-align:right">Total ' + thArrow('total') + '</th>' +
+    '<th' + thClass('last') + ' onclick="sortBlockedBy(\'last\')">Last Activity ' + thArrow('last') + '</th>' +
+    '<th style="width:70px"></th>' +
+    '</tr></thead><tbody>';
+
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    var dSafe = r.domain.replace(/'/g, "\\'");
+    var contactMeta = r.contacts > 0 ? r.contacts + ' contact' + (r.contacts !== 1 ? 's' : '') : '';
+    var lastStr = r.lastDate ? r.lastDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+
+    html += '<tr>' +
+      '<td><div class="blocked-domain-cell">' +
+        '<div class="blocked-domain-icon">' + r.domain[0].toUpperCase() + '</div>' +
+        '<div class="blocked-domain-info">' +
+          '<span class="blocked-domain-name">' + esc(displayDomain(r.domain)) + '</span>' +
+          (contactMeta ? '<span class="blocked-domain-meta">' + contactMeta + '</span>' : '') +
+        '</div>' +
+      '</div></td>' +
+      '<td style="text-align:right">' + r.sent + '</td>' +
+      '<td style="text-align:right">' + r.received + '</td>' +
+      '<td style="text-align:right;font-weight:600">' + r.total + '</td>' +
+      '<td><span style="color:var(--text2)">' + lastStr + '</span></td>' +
+      '<td><button class="blocked-domain-unblock" onclick="unblockDomain(\'' + dSafe + '\')">Unblock</button></td>' +
+    '</tr>';
+  }
+
+  html += '</tbody></table>';
+  list.innerHTML = html;
 }
 
 function unblockDomain(domain) {
