@@ -4,6 +4,7 @@
   "framework": null,
   "rewrites": [
     { "source": "/api/keepalive", "destination": "/api/keepalive.js" },
+    { "source": "/api/openai", "destination": "/api/openai.js" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
