@@ -2824,7 +2824,7 @@ async function syncToSupabase() {
     await Promise.all(Object.entries(settingsToSync).map(async ([key, value]) => {
       const { error } = await supabaseClient
         .from('user_settings')
-        .upsert({ user_id: supabaseUserId, key: key, value: JSON.stringify(value) },
+        .upsert({ user_id: supabaseUserId, key: key, value: value },
                 { onConflict: 'user_id,key' });
       if (error) console.warn('Supabase: setting ' + key + ' failed:', error.message);
     }));
@@ -4381,8 +4381,7 @@ function updateLastSyncDisplay() {
   document.getElementById('accountEmail').textContent = userEmail || currentAccount.username || '';
   if (lastScanTime) {
     document.getElementById('lastSyncText').textContent =
-      'Last scanned ' + timeAgo(lastScanTime) + ' · ' +
-      companies.length + ' companies';
+      'Last synced ' + timeAgo(lastScanTime);
   } else {
     document.getElementById('lastSyncText').textContent = '';
   }
@@ -4449,6 +4448,9 @@ async function onSignedIn(unused, supabasePromise) {
         fullScanDone = sbData.scanMeta.fullScanDone || false;
         deltaLink = sbData.scanMeta.deltaLink || null;
       }
+      // If we have substantial data in DB, the full scan was clearly done
+      // (handles cases where scanMeta wasn't saved or was lost)
+      if (Object.keys(sbData.domainMap).length > 50) fullScanDone = true;
       seenMsgIds = new Set();
       domainMap = sbData.domainMap;
       hasData = true;
@@ -4561,10 +4563,10 @@ function updateScanStatus() {
   const el = document.getElementById('scanStatusText');
   if (!el) return;
   if (fullScanDone && !isScanning) {
-    el.textContent = 'Live sync — ' + companies.length + ' companies';
+    el.textContent = 'Synced · ' + companies.length + ' companies';
     el.className = 'sa-scan-status done';
   } else if (fullScanDone && isScanning) {
-    el.textContent = 'Syncing new emails...';
+    el.textContent = 'Checking for new emails...';
     el.className = 'sa-scan-status active';
   } else if (isScanning) {
     el.textContent = 'Initial scan in progress...';
