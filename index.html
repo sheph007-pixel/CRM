@@ -9199,16 +9199,17 @@ async function sendAI() {
 }
 
 async function callOpenAIAPI(apiKey, systemPrompt, messages) {
-  var body = {
+  var openaiBody = {
     model: 'gpt-4o',
     messages: [{ role: 'system', content: systemPrompt }].concat(messages),
     max_tokens: 1024,
     temperature: 0.7
   };
-  var resp = await fetch('https://api.openai.com/v1/chat/completions', {
+  // Use server-side proxy to avoid CORS issues with direct browser-to-OpenAI calls
+  var resp = await fetch('/api/openai', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
-    body: JSON.stringify(body)
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apiKey: apiKey, body: openaiBody })
   });
   if (!resp.ok) {
     var err = await resp.text();
