@@ -474,8 +474,9 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
 .ev-back-btn{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;border:none;background:none;cursor:pointer;color:var(--text);transition:.15s}
 .ev-back-btn:hover{background:var(--surface2)}
 .ev-toolbar-actions{display:flex;align-items:center;gap:6px}
-.ev-action-btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font-size:13px;color:var(--text);cursor:pointer;transition:.15s;font-family:inherit}
+.ev-action-btn{display:inline-flex;align-items:center;gap:7px;padding:10px 18px;border-radius:8px;border:1px solid var(--border);background:var(--surface);font-size:14px;font-weight:500;color:var(--text);cursor:pointer;transition:.15s;font-family:inherit}
 .ev-action-btn:hover{background:var(--surface2);border-color:var(--ms-blue);color:var(--ms-blue)}
+.ev-action-btn svg{flex-shrink:0}
 
 .ev-scroll{flex:1;overflow-y:auto;padding:0}
 .ev-subject{font-size:22px;font-weight:700;padding:24px 28px 8px;color:var(--text);line-height:1.3;margin:0}
@@ -523,6 +524,12 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
 .btn-ai:hover{opacity:.9}
 .btn-ai:disabled{opacity:.5;cursor:not-allowed}
 .btn-ai svg{width:13px;height:13px}
+.compose-attach-btn{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);font-size:12px;color:var(--text2);cursor:pointer;transition:.15s;font-family:inherit}
+.compose-attach-btn:hover{background:var(--surface2);border-color:var(--ms-blue);color:var(--ms-blue)}
+.compose-attachments{display:flex;flex-wrap:wrap;gap:6px;padding:6px 16px;border-bottom:1px solid var(--border)}
+.compose-att-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--text)}
+.compose-att-chip .att-remove{cursor:pointer;color:var(--text2);font-size:14px;line-height:1;margin-left:2px;border:none;background:none;padding:0}
+.compose-att-chip .att-remove:hover{color:var(--red)}
 .ai-populate-row{display:flex;align-items:center;gap:8px;margin:8px 0;padding:8px 12px;background:linear-gradient(135deg,rgba(124,77,255,.06),rgba(26,115,232,.06));border-radius:10px;border:1px solid rgba(124,77,255,.15)}
 .ai-populate-row .btn-ai{font-size:11px;padding:5px 10px}
 
@@ -1370,8 +1377,14 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
   <div class="compose-body">
     <textarea id="composeBody" placeholder="Write your message..."></textarea>
   </div>
+  <div class="compose-attachments" id="composeAttachments" style="display:none"></div>
   <div class="compose-footer">
     <div style="display:flex;align-items:center;gap:8px">
+      <button class="compose-attach-btn" onclick="document.getElementById('composeFileInput').click()" title="Add attachment">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+        Attach
+      </button>
+      <input type="file" id="composeFileInput" multiple style="display:none" onchange="composeAddFiles(this.files)">
       <span style="font-size:11px;color:var(--text2)" id="composeSendStatus"></span>
     </div>
     <button class="btn-send" id="composeSendBtn" onclick="sendComposedEmail()">Send</button>
@@ -1389,15 +1402,19 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
       </button>
       <div class="ev-toolbar-actions">
         <button class="ev-action-btn" onclick="replyFromViewer()" title="Reply">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 00-4-4H4"/></svg>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 00-4-4H4"/></svg>
           Reply
         </button>
         <button class="ev-action-btn" onclick="replyAllFromViewer()" title="Reply All">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 00-4-4H4"/><polyline points="13 17 8 12 13 7" opacity="0.5"/></svg>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 00-4-4H4"/><polyline points="13 17 8 12 13 7" opacity="0.5"/></svg>
           Reply All
         </button>
+        <button class="ev-action-btn" onclick="forwardFromViewer()" title="Forward">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 014-4h12"/></svg>
+          Forward
+        </button>
         <button class="ev-action-btn" onclick="openInOutlook()" title="Open in Outlook">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           Open in Outlook
         </button>
       </div>
@@ -7566,6 +7583,28 @@ function replyAllFromViewer() {
   openCompose(allTo[0].address, allTo[0].name, reSubject, msgId, quoteHeader + quotedLines, quotedHtml, allTo, ccList);
 }
 
+function forwardFromViewer() {
+  if (!currentViewerMsgId) return;
+  const subject = document.getElementById('evSubject').textContent || '';
+  const senderLabel = currentViewerFromName ? currentViewerFromName + ' <' + currentViewerFromEmail + '>' : currentViewerFromEmail;
+  const quotedDate = currentViewerDate;
+  const quotedBody = currentViewerBodyText;
+  const quotedHtml = currentViewerBodyHtml;
+  closeEmailViewer();
+  var fwdSubject = subject.startsWith('Fwd:') || subject.startsWith('FW:') ? subject : 'Fwd: ' + subject;
+  var fwdHeader = '\n\n---------- Forwarded message ----------\nFrom: ' + senderLabel + '\nDate: ' + quotedDate + '\nSubject: ' + subject + '\n\n';
+  var fwdBody = quotedBody.trim();
+  // Open compose with no replyId so it sends as new email, and clear the To field
+  openCompose('', '', fwdSubject, null, fwdHeader + fwdBody, quotedHtml);
+  // Clear To field so user can pick a recipient
+  var toEl = document.getElementById('composeTo');
+  toEl.value = '';
+  toEl.dataset.email = '';
+  toEl.readOnly = false;
+  document.getElementById('composeTitle').textContent = 'Forward';
+  setTimeout(function() { toEl.focus(); }, 120);
+}
+
 function openInOutlook() {
   if (currentViewerWebLink) window.open(currentViewerWebLink, '_blank');
 }
@@ -7598,8 +7637,51 @@ let composeOriginalBodyHtml = '';
 let composeIsReplyAll = false;
 let composeReplyAllTo = [];
 let composeReplyAllCc = [];
+let composeAttachments = []; // Array of { file: File, base64: string }
+
+function composeAddFiles(fileList) {
+  for (var i = 0; i < fileList.length; i++) {
+    (function(file) {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        composeAttachments.push({ file: file, base64: e.target.result.split(',')[1] });
+        renderComposeAttachments();
+      };
+      reader.readAsDataURL(file);
+    })(fileList[i]);
+  }
+  // Reset input so same file can be re-added
+  document.getElementById('composeFileInput').value = '';
+}
+
+function composeRemoveAttachment(idx) {
+  composeAttachments.splice(idx, 1);
+  renderComposeAttachments();
+}
+
+function renderComposeAttachments() {
+  var container = document.getElementById('composeAttachments');
+  if (composeAttachments.length === 0) { container.style.display = 'none'; container.innerHTML = ''; return; }
+  container.style.display = 'flex';
+  container.innerHTML = composeAttachments.map(function(att, i) {
+    var sizeKB = Math.round(att.file.size / 1024);
+    var sizeLabel = sizeKB >= 1024 ? (sizeKB / 1024).toFixed(1) + ' MB' : sizeKB + ' KB';
+    return '<span class="compose-att-chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>' +
+      att.file.name + ' (' + sizeLabel + ')' +
+      '<button class="att-remove" onclick="composeRemoveAttachment(' + i + ')" title="Remove">&times;</button></span>';
+  }).join('');
+}
+
+function clearComposeAttachments() {
+  composeAttachments = [];
+  var container = document.getElementById('composeAttachments');
+  if (container) { container.style.display = 'none'; container.innerHTML = ''; }
+  var fileInput = document.getElementById('composeFileInput');
+  if (fileInput) fileInput.value = '';
+}
 
 function openCompose(toEmail, toName, subject, replyId, quotedBody, originalHtml, replyAllTo, replyAllCc) {
+  clearComposeAttachments();
   composeReplyToId = replyId || null;
   composeOriginalBodyHtml = originalHtml || '';
   composeIsReplyAll = !!(replyAllTo && replyAllTo.length > 0);
@@ -7663,6 +7745,7 @@ function openCompose(toEmail, toName, subject, replyId, quotedBody, originalHtml
 
 // Open blank compose from Emails toolbar
 function openComposeNew() {
+  clearComposeAttachments();
   composeReplyToId = null;
   composeOriginalBodyHtml = '';
   composeIsReplyAll = false;
@@ -7861,9 +7944,10 @@ async function sendComposedEmail() {
     var headers = graphHeaders(token);
     var resp;
 
-    if (composeReplyToId) {
-      // Use Graph API reply/replyAll endpoint for proper email threading
-      // Extract text above the quoted section (user's reply + signature)
+    var hasAttachments = composeAttachments.length > 0;
+
+    if (composeReplyToId && !hasAttachments) {
+      // Simple reply/replyAll without attachments
       var quoteMarker2 = fullBody.indexOf('\n\nOn ');
       var commentText = quoteMarker2 > -1 ? fullBody.substring(0, quoteMarker2).trim() : fullBody.trim();
       var commentHtml = commentText.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
@@ -7872,9 +7956,35 @@ async function sendComposedEmail() {
         method: 'POST', headers: headers,
         body: JSON.stringify({ comment: commentHtml })
       });
+    } else if (composeReplyToId && hasAttachments) {
+      // Reply with attachments: create draft reply, add attachments, then send
+      var quoteMarker2 = fullBody.indexOf('\n\nOn ');
+      var commentText = quoteMarker2 > -1 ? fullBody.substring(0, quoteMarker2).trim() : fullBody.trim();
+      var commentHtml = commentText.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+      var replyEndpoint = composeIsReplyAll ? '/createReplyAll' : '/createReply';
+      var draftResp = await fetch('https://graph.microsoft.com/v1.0/me/messages/' + composeReplyToId + replyEndpoint, {
+        method: 'POST', headers: headers, body: JSON.stringify({ comment: commentHtml })
+      });
+      if (!draftResp.ok) { var err = await draftResp.text(); throw new Error('Draft failed: ' + draftResp.status + ' — ' + err); }
+      var draft = await draftResp.json();
+      // Add attachments to the draft
+      for (var ai = 0; ai < composeAttachments.length; ai++) {
+        var att = composeAttachments[ai];
+        await fetch('https://graph.microsoft.com/v1.0/me/messages/' + draft.id + '/attachments', {
+          method: 'POST', headers: headers,
+          body: JSON.stringify({ '@odata.type': '#microsoft.graph.fileAttachment', name: att.file.name, contentType: att.file.type || 'application/octet-stream', contentBytes: att.base64 })
+        });
+      }
+      // Send the draft
+      resp = await fetch('https://graph.microsoft.com/v1.0/me/messages/' + draft.id + '/send', { method: 'POST', headers: headers });
     } else {
-      // New email — send the full body as-is (includes signature already)
+      // New email (with or without attachments)
       var message = { subject: subject, body: { contentType: 'Text', content: fullBody }, toRecipients: [{ emailAddress: { address: toEmail } }] };
+      if (hasAttachments) {
+        message.attachments = composeAttachments.map(function(att) {
+          return { '@odata.type': '#microsoft.graph.fileAttachment', name: att.file.name, contentType: att.file.type || 'application/octet-stream', contentBytes: att.base64 };
+        });
+      }
       resp = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', { method: 'POST', headers: headers, body: JSON.stringify({ message: message, saveToSentItems: true }) });
     }
     if (!resp.ok) { var err = await resp.text(); throw new Error('Send failed: ' + resp.status + ' — ' + err); }
