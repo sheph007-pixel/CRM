@@ -4260,14 +4260,10 @@ async function scanOutlookEmails(forceFullScan) {
       fullScanDone = true;
       updateScanBanner('Full scan complete! ' + totalFetched.toLocaleString() + ' emails processed, ' + companies.length + ' companies found');
     } else {
-      // INCREMENTAL SYNC — fast, lightweight, silent
+      // INCREMENTAL SYNC — completely silent, like Close.com / Attio
       // Try delta link first (instant, only changes since last sync)
       // If delta fails, fall back to recent emails only (last 7 days)
       totalFetched = await fetchEmailsProgressively(token, true);
-      if (totalFetched > 0) {
-        updateScanBanner('Synced ' + totalFetched.toLocaleString() + ' new emails');
-        setTimeout(() => { hideScanBanner(); }, 2000);
-      }
     }
 
     // Recalculate lastDate for each domain/contact from actual email data.
@@ -4278,7 +4274,8 @@ async function scanOutlookEmails(forceFullScan) {
     await persistData();
     // Sync to Supabase immediately after scan (major data event)
     await syncToSupabase();
-    setSyncBadge('success', 'Saved');
+    // Only flash "Saved" badge during full scan; incremental syncs are silent
+    if (needsFullScan) setSyncBadge('success', 'Saved');
     updateLastSyncDisplay();
 
     // Single final render after scan completes — no mid-scan re-renders
@@ -4295,9 +4292,6 @@ async function scanOutlookEmails(forceFullScan) {
       runEnrichment();
       setTimeout(function() { aiScanAllEmails(); }, 2000);
       setTimeout(() => { hideScanBanner(); }, 4000);
-    } else if (totalFetched > 0) {
-      // Incremental: just hide banner
-      setTimeout(() => { hideScanBanner(); }, 2000);
     }
 
   } catch(e) {
@@ -4562,17 +4556,15 @@ function hideScanBanner() {
 function updateScanStatus() {
   const el = document.getElementById('scanStatusText');
   if (!el) return;
-  if (fullScanDone && !isScanning) {
-    el.textContent = 'Synced · ' + companies.length + ' companies';
+  if (fullScanDone) {
+    // After full scan: always show synced. Background syncs are silent.
+    el.textContent = 'Synced';
     el.className = 'sa-scan-status done';
-  } else if (fullScanDone && isScanning) {
-    el.textContent = 'Checking for new emails...';
-    el.className = 'sa-scan-status active';
   } else if (isScanning) {
     el.textContent = 'Initial scan in progress...';
     el.className = 'sa-scan-status active';
   } else {
-    el.textContent = 'Waiting to scan';
+    el.textContent = 'Not synced';
     el.className = 'sa-scan-status';
   }
 }
