@@ -8225,20 +8225,28 @@ async function fetchContactTimeline(email, domain) {
           }
         }
       }
-    } else {
-      // Fallback: try simple $filter on from address only (always works)
-      console.warn('$search failed (' + searchResp.status + '), falling back to $filter');
-      const filterUrl = 'https://graph.microsoft.com/v1.0/me/messages?' + top + '&' + select +
-        '&$orderby=receivedDateTime desc&$filter=' + encodeURIComponent("from/emailAddress/address eq '" + email + "'");
-      const filterResp = await fetch(filterUrl, { headers });
-      if (filterResp.ok) {
-        const filterData = await filterResp.json();
-        if (filterData.value) {
-          for (const m of filterData.value) {
-            items.push({ type: 'received', subject: m.subject || '(no subject)', date: new Date(m.receivedDateTime || m.sentDateTime), preview: m.bodyPreview || '', id: m.id, conversationId: m.conversationId, webLink: m.webLink || '' });
+    }
+
+    // If $search returned no received emails (search can be unreliable),
+    // do a supplementary $filter query to find emails FROM this contact.
+    const hasReceived = items.some(i => i.type === 'received');
+    if (!hasReceived) {
+      try {
+        const filterUrl = 'https://graph.microsoft.com/v1.0/me/messages?' + top + '&' + select +
+          '&$orderby=receivedDateTime desc&$filter=' + encodeURIComponent("from/emailAddress/address eq '" + email + "'");
+        const filterResp = await fetch(filterUrl, { headers });
+        if (filterResp.ok) {
+          const filterData = await filterResp.json();
+          if (filterData.value) {
+            const existingIds = new Set(items.map(i => i.id));
+            for (const m of filterData.value) {
+              if (!existingIds.has(m.id)) {
+                items.push({ type: 'received', subject: m.subject || '(no subject)', date: new Date(m.receivedDateTime || m.sentDateTime), preview: m.bodyPreview || '', id: m.id, conversationId: m.conversationId, webLink: m.webLink || '' });
+              }
+            }
           }
         }
-      }
+      } catch(e2) { console.warn('Received filter fallback failed:', e2); }
     }
 
     // Calendar events — wrapped in try/catch since Calendars.Read may not be granted
