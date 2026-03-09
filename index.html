@@ -2678,10 +2678,12 @@ async function supabaseEnsureUser(authId, email, displayName) {
     // Find existing user by email — use limit(1) + order to handle duplicate rows safely.
     // maybeSingle() errors when multiple rows match the same email, which silently
     // caused new empty user rows to be created on every login, losing all saved data.
+    // Use ilike for case-insensitive matching so "Hunter@kennion.com" matches
+    // "hunter@kennion.com" — prevents creating duplicate empty users on new devices.
     var { data: rows, error: findErr } = await supabaseClient
       .from('users')
       .select('id')
-      .eq('email', email)
+      .ilike('email', email)
       .order('created_at', { ascending: true })
       .limit(1);
     if (!findErr && rows && rows.length > 0) {
