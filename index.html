@@ -66,7 +66,7 @@ body{min-height:100vh;overflow-x:hidden}
 .sidebar.collapsed{width:52px!important;min-width:52px;padding:10px 6px!important;overflow:hidden}
 .sidebar.collapsed>*:not(.sidebar-collapse-row):not(.sidebar-item):not(.sidebar-account):not(.inbox-item-nav){display:none}
 .sidebar.collapsed .sidebar-section{display:none}
-.sidebar.collapsed .sidebar-item{padding:8px 0;justify-content:center;overflow:hidden}
+.sidebar.collapsed .sidebar-item{padding:8px 0;justify-content:center;overflow:hidden;font-size:0;white-space:nowrap}
 .sidebar.collapsed .sidebar-item>*:not(svg){display:none}
 .sidebar.collapsed .sidebar-item svg{margin:0;flex-shrink:0}
 .sidebar.collapsed .sidebar-account{padding:6px 2px;overflow:hidden}
@@ -4297,9 +4297,12 @@ async function resolveCompanyNames() {
     const uncached = companies.filter(c => !companyNameCache[c.domain]).map(c => c.domain);
     if (uncached.length === 0) return;
 
+    // Cap to 50 lookups per run to avoid freezing the UI on large datasets
+    const toResolve = uncached.slice(0, 50);
+
     // Batch lookups, 5 at a time to avoid rate limits
-    for (let i = 0; i < uncached.length; i += 5) {
-      const batch = uncached.slice(i, i + 5);
+    for (let i = 0; i < toResolve.length; i += 5) {
+      const batch = toResolve.slice(i, i + 5);
       await Promise.all(batch.map(d => lookupCompanyName(d)));
 
       // Update company names in-place and re-render
@@ -6577,8 +6580,8 @@ function scheduleDomainScan() {
   const now = Date.now();
 
   if (!lastScan || (now - lastScan) >= ONE_WEEK) {
-    // Run after a short delay so UI loads first
-    setTimeout(scanDomainValidity, 5000);
+    // Run after a longer delay so UI loads first (especially on large datasets)
+    setTimeout(scanDomainValidity, 30000);
   } else {
     // Schedule for when 7 days have passed
     const remaining = ONE_WEEK - (now - lastScan);
