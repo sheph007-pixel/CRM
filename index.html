@@ -8227,54 +8227,30 @@ async function fetchContactTimeline(email, domain) {
       }
     }
 
-    // If $search returned no received emails (search can be unreliable),
-    // do a supplementary $filter query to find emails FROM this contact.
+    // If $search "participants:" returned no received emails, fetch recent messages
+    // and filter client-side. This bypasses search indexing delays and works across
+    // ALL folders including Junk/Spam (which $search may exclude).
     const hasReceived = items.some(i => i.type === 'received');
     if (!hasReceived) {
       try {
-        const filterUrl = 'https://graph.microsoft.com/v1.0/me/messages?' + top + '&' + select +
-          '&$orderby=receivedDateTime desc&$filter=' + encodeURIComponent("from/emailAddress/address eq '" + email + "'");
-        const filterResp = await fetch(filterUrl, { headers });
-        if (filterResp.ok) {
-          const filterData = await filterResp.json();
-          if (filterData.value) {
+        const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const recentUrl = 'https://graph.microsoft.com/v1.0/me/messages?$top=100&' + select +
+          '&$orderby=receivedDateTime desc&$filter=' + encodeURIComponent("receivedDateTime ge " + since);
+        const recentResp = await fetch(recentUrl, { headers });
+        if (recentResp.ok) {
+          const recentData = await recentResp.json();
+          if (recentData.value) {
             const existingIds = new Set(items.map(i => i.id));
-            for (const m of filterData.value) {
-              if (!existingIds.has(m.id)) {
+            const emailLower = email.toLowerCase();
+            for (const m of recentData.value) {
+              const fromAddr = (m.from?.emailAddress?.address || '').toLowerCase();
+              if (fromAddr === emailLower && !existingIds.has(m.id)) {
                 items.push({ type: 'received', subject: m.subject || '(no subject)', date: new Date(m.receivedDateTime || m.sentDateTime), preview: m.bodyPreview || '', id: m.id, conversationId: m.conversationId, webLink: m.webLink || '' });
               }
             }
           }
         }
-      } catch(e2) { console.warn('Received filter fallback failed:', e2); }
-    }
-
-    // If still no received emails but we have known receivedIds from the scan,
-    // fetch those specific messages by ID as a final fallback.
-    // This handles cases where $search has indexing delays and $filter misses the email.
-    const hasReceivedNow = items.some(i => i.type === 'received');
-    if (!hasReceivedNow && domain && domainMap[domain]) {
-      try {
-        const le = email.toLowerCase();
-        const ct = domainMap[domain].contacts[le];
-        if (ct && ct.receivedIds && ct.receivedIds.size > 0) {
-          const existingIds = new Set(items.map(i => i.id));
-          // Fetch up to 3 messages sequentially to avoid overloading the browser
-          let fetched = 0;
-          for (const msgId of ct.receivedIds) {
-            if (fetched >= 3) break;
-            if (existingIds.has(msgId)) continue;
-            try {
-              const r = await fetch('https://graph.microsoft.com/v1.0/me/messages/' + encodeURIComponent(msgId) + '?' + select, { headers, signal: AbortSignal.timeout(5000) });
-              if (r.ok) {
-                const m = await r.json();
-                items.push({ type: 'received', subject: m.subject || '(no subject)', date: new Date(m.receivedDateTime || m.sentDateTime), preview: m.bodyPreview || '', id: m.id, conversationId: m.conversationId, webLink: m.webLink || '' });
-              }
-            } catch(e) { /* skip individual message failures */ }
-            fetched++;
-          }
-        }
-      } catch(e3) { console.warn('Direct message ID fallback failed:', e3); }
+      } catch(e2) { console.warn('Recent messages fallback failed:', e2); }
     }
 
     // Calendar events — wrapped in try/catch since Calendars.Read may not be granted
