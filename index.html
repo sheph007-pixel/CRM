@@ -10633,9 +10633,13 @@ window.addEventListener('beforeunload', () => {
     syncToSupabase();
   }
 });
+// Debounce visibility-change cache saves to avoid blocking UI on rapid tab switches
+let _visCacheTimer = null;
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && Object.keys(domainMap).length > 0) {
-    saveLocalCache(); // synchronous — cache saved immediately when tab hidden
+    // Delay cache save slightly so it doesn't block UI during tab switch animation
+    if (_visCacheTimer) clearTimeout(_visCacheTimer);
+    _visCacheTimer = setTimeout(() => { _visCacheTimer = null; saveLocalCache(); }, 500);
     if (supabaseUserId) syncToSupabase();
   } else if (!document.hidden && supabaseUserId) {
     refreshFromSupabase();
