@@ -1390,6 +1390,21 @@ td.custom-cell input.cell-edit{background:var(--surface);border:1px solid var(--
   <button class="btn btn-ghost btn-sm" onclick="clearFlaggedSelection()">Cancel</button>
 </div>
 
+<!-- NEW DOMAINS BULK ACTIONS BAR -->
+<div class="bulk-bar" id="newDomainsBulkBar">
+  <span class="bulk-count" id="newDomainsBulkCount">0 selected</span>
+  <div class="bulk-sep"></div>
+  <button class="btn btn-ghost btn-sm" onclick="bulkKeepNewDomains()" style="color:var(--green);border-color:var(--green)">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+    Keep
+  </button>
+  <button class="btn btn-sm btn-danger" onclick="bulkBlockNewDomains()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+    Block
+  </button>
+  <button class="btn btn-ghost btn-sm" onclick="clearNewDomainsSelection()">Cancel</button>
+</div>
+
 <!-- COMPOSE EMAIL MODAL -->
 <!-- Outlook-style compose popup -->
 <div class="compose-popup cp-normal" id="composePopup">
@@ -6719,6 +6734,7 @@ let showingNewDomains = false;
 // ──────────────────────────────────────────────
 
 let newDomainsSort = { key: 'added', asc: false };
+let selectedNewDomains = new Set();
 
 function updateNewDomainsCount() {
   const el = document.getElementById('newDomainsCount');
@@ -6735,6 +6751,9 @@ function updateNewDomainsCount() {
 
 function hideNewDomainsView() {
   showingNewDomains = false;
+  selectedNewDomains.clear();
+  var bar = document.getElementById('newDomainsBulkBar');
+  if (bar) bar.classList.remove('active');
 }
 
 function sortNewDomainsTable(key) {
@@ -6806,6 +6825,7 @@ function showNewDomainsView() {
 
   // Render table header
   document.getElementById('tableHead').innerHTML = '<tr>' +
+    '<th class="col-check"><input type="checkbox" class="row-checkbox" id="newDomainsSelectAll" onchange="toggleNewDomainsSelectAll(this.checked)"></th>' +
     '<th onclick="sortNewDomainsTable(\'company\')" style="cursor:pointer">Company' + arrow('company') + '</th>' +
     '<th onclick="sortNewDomainsTable(\'emails\')" style="cursor:pointer">Total Emails' + arrow('emails') + '</th>' +
     '<th onclick="sortNewDomainsTable(\'added\')" style="cursor:pointer">Added' + arrow('added') + '</th>' +
@@ -6815,8 +6835,9 @@ function showNewDomainsView() {
   var tbody = document.getElementById('tableBody');
 
   if (items.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:40px;color:var(--text2)">No new domains discovered in the past 3 days.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text2)">No new domains discovered in the past 3 days.</td></tr>';
     updateViewTitleCount(0);
+    updateNewDomainsBulkBar();
     return;
   }
 
@@ -6824,8 +6845,10 @@ function showNewDomainsView() {
     var dSafe = item.domain.replace(/'/g, "\\'");
     var addedLabel = item.daysAgo === 0 ? 'Today' : item.daysAgo === 1 ? '1 day ago' : item.daysAgo + ' days ago';
     var addedDate = new Date(item.addedTime).toLocaleDateString();
+    var sel = selectedNewDomains.has(item.domain);
 
-    return '<tr>' +
+    return '<tr' + (sel ? ' class="row-selected"' : '') + ' data-new-domain="' + esc(item.domain) + '">' +
+      '<td class="col-check"><input type="checkbox" class="row-checkbox" data-nd="' + esc(item.domain) + '"' + (sel ? ' checked' : '') + ' onchange="toggleNewDomainSelect(\'' + dSafe + '\', this.checked)"></td>' +
       '<td><div class="company-cell" onclick="openNewDomainDetail(\'' + dSafe + '\')" style="cursor:pointer"><div class="company-logo" style="background:#1a73e8">' + item.domain[0].toUpperCase() + '</div><div class="company-info"><span class="company-name">' + esc(item.name) + '</span><span class="company-domain">' + esc(displayDomain(item.domain)) + '</span></div></div></td>' +
       '<td style="font-size:12px;font-weight:600">' + item.totalEmails + '</td>' +
       '<td style="font-size:12px;color:var(--text2)"><div>' + addedLabel + '</div><div style="font-size:11px;opacity:.7">' + addedDate + '</div></td>' +
@@ -6836,7 +6859,81 @@ function showNewDomainsView() {
     '</tr>';
   }).join('');
 
+  // Update select-all checkbox state
+  var selectAll = document.getElementById('newDomainsSelectAll');
+  if (selectAll) {
+    var allDomains = items.map(function(i) { return i.domain; });
+    var allChecked = allDomains.length > 0 && allDomains.every(function(d) { return selectedNewDomains.has(d); });
+    var someChecked = allDomains.some(function(d) { return selectedNewDomains.has(d); });
+    selectAll.checked = allChecked;
+    selectAll.indeterminate = someChecked && !allChecked;
+  }
+
   updateViewTitleCount(items.length);
+  updateNewDomainsBulkBar();
+}
+
+function toggleNewDomainSelect(domain, checked) {
+  if (checked) selectedNewDomains.add(domain);
+  else selectedNewDomains.delete(domain);
+  showNewDomainsView();
+}
+
+function toggleNewDomainsSelectAll(checked) {
+  var allItems = document.querySelectorAll('input[data-nd]');
+  allItems.forEach(function(cb) {
+    var domain = cb.getAttribute('data-nd');
+    if (checked) selectedNewDomains.add(domain);
+    else selectedNewDomains.delete(domain);
+  });
+  showNewDomainsView();
+}
+
+function clearNewDomainsSelection() {
+  selectedNewDomains.clear();
+  showNewDomainsView();
+}
+
+function updateNewDomainsBulkBar() {
+  var bar = document.getElementById('newDomainsBulkBar');
+  if (!bar) return;
+  if (selectedNewDomains.size > 0) {
+    bar.classList.add('active');
+    document.getElementById('newDomainsBulkCount').textContent = selectedNewDomains.size + ' selected';
+  } else {
+    bar.classList.remove('active');
+  }
+}
+
+function bulkKeepNewDomains() {
+  var oldDate = new Date(Date.now() - 4 * 86400000).toISOString();
+  for (var domain of selectedNewDomains) {
+    var d = domain.toLowerCase();
+    ensureDomain(d);
+    domainMap[d].db_created_at = oldDate;
+    supabaseSaveCompanyField(d, 'created_at', oldDate);
+  }
+  selectedNewDomains.clear();
+  updateNewDomainsCount();
+  showNewDomainsView();
+}
+
+function bulkBlockNewDomains() {
+  var domains = Array.from(selectedNewDomains);
+  selectedNewDomains.clear();
+  var i = 0;
+  function blockNext() {
+    if (i >= domains.length) {
+      updateNewDomainsCount();
+      showNewDomainsView();
+      return;
+    }
+    var d = domains[i++];
+    showBlockConfirm(d, function() {
+      blockNext();
+    });
+  }
+  blockNext();
 }
 
 let _cameFromNewDomains = false;
@@ -6872,8 +6969,8 @@ function keepNewDomain(domain) {
   // "Keep" means the user reviewed and accepts this domain — remove from "new" by backdating created_at
   var d = domain.toLowerCase();
   ensureDomain(d);
-  // Set db_created_at to 8 days ago so it falls outside the 7-day window
-  var oldDate = new Date(Date.now() - 8 * 86400000).toISOString();
+  // Set db_created_at to 4 days ago so it falls outside the 3-day window
+  var oldDate = new Date(Date.now() - 4 * 86400000).toISOString();
   domainMap[d].db_created_at = oldDate;
   supabaseSaveCompanyField(d, 'created_at', oldDate);
   updateNewDomainsCount();
