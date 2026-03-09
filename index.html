@@ -8208,69 +8208,122 @@ async function fetchContactTimeline(email, domain) {
     const token = await getAccessToken();
     const headers = graphHeaders(token);
     const items = [];
-    const select = '$select=id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,conversationId,webLink';
-    const top = '$top=75';
+    const selectFields = 'id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,conversationId,webLink';
+    const select = '$select=' + selectFields;
 
-    // Use $search with "participants:" — this reliably finds ALL emails
-    // involving this contact (both sent to and received from).
-    // Note: $search cannot be combined with $orderby, so we sort client-side.
-    const searchUrl = 'https://graph.microsoft.com/v1.0/me/messages?' + top + '&' + select +
-      '&$search=' + encodeURIComponent('"participants:' + email + '"');
-    const searchResp = await fetch(searchUrl, { headers });
-    if (searchResp.ok) {
-      const searchData = await searchResp.json();
-      if (searchData.value) {
-        const myLower = userEmail.toLowerCase();
-        for (const m of searchData.value) {
-          const fromAddr = (m.from?.emailAddress?.address || '').toLowerCase();
-          const isSent = fromAddr === myLower;
-          const isFromContact = fromAddr === email.toLowerCase();
-          // Classify: sent by me, received from contact, or skip
-          if (isSent) {
-            items.push({ type: 'sent', subject: m.subject || '(no subject)', date: new Date(m.sentDateTime || m.receivedDateTime), preview: m.bodyPreview || '', id: m.id, conversationId: m.conversationId, webLink: m.webLink || '' });
-          } else if (isFromContact) {
-            items.push({ type: 'received', subject: m.subject || '(no subject)', date: new Date(m.receivedDateTime || m.sentDateTime), preview: m.bodyPreview || '', id: m.id, conversationId: m.conversationId, webLink: m.webLink || '' });
+    // ── Strategy: Use known message IDs from domainMap when available ──
+    // The delta scan already tracks every sent/received message ID per contact.
+    // Fetching by ID via $batch is faster and more reliable than $search which
+    // can miss emails (especially notification addresses or recent messages).
+    const contactData = domain && domainMap[domain] && domainMap[domain].contacts[email.toLowerCase()];
+    const knownSentIds = contactData && contactData.sentIds ? [...contactData.sentIds] : [];
+    const knownRecvIds = contactData && contactData.receivedIds ? [...contactData.receivedIds] : [];
+    const allKnownIds = [...new Set([...knownSentIds, ...knownRecvIds])];
+
+    // Helper: fetch messages by ID using $batch (up to 20 per batch, Graph limit)
+    async function fetchMessagesByIds(msgIds) {
+      const fetched = [];
+      const batchSize = 20;
+      for (let i = 0; i < msgIds.length; i += batchSize) {
+        const batch = msgIds.slice(i, i + batchSize);
+        const requests = batch.map((id, idx) => ({
+          id: String(idx + 1),
+          method: 'GET',
+          url: '/me/messages/' + encodeURIComponent(id) + '?' + select
+        }));
+        try {
+          const batchResp = await fetch('https://graph.microsoft.com/v1.0/$batch', {
+            method: 'POST', headers, body: JSON.stringify({ requests })
+          });
+          if (batchResp.ok) {
+            const batchData = await batchResp.json();
+            for (const r of (batchData.responses || [])) {
+              if (r.status === 200 && r.body) fetched.push(r.body);
+            }
           }
-        }
+        } catch(e) { console.warn('Batch fetch failed:', e); }
       }
+      return fetched;
     }
 
-    // If $search "participants:" returned no received emails, try server-side
-    // $filter on the sender address first (fast), then fall back to a smaller
-    // client-side filter if needed.
-    const hasReceived = items.some(i => i.type === 'received');
-    if (!hasReceived) {
-      try {
-        // Try server-side filter by sender address first (efficient, avoids large payloads)
-        const filterUrl = 'https://graph.microsoft.com/v1.0/me/messages?$top=25&' + select +
-          '&$orderby=receivedDateTime desc&$filter=' + encodeURIComponent("from/emailAddress/address eq '" + email + "'");
-        const filterResp = await fetch(filterUrl, { headers });
-        if (filterResp.ok) {
-          const filterData = await filterResp.json();
-          if (filterData.value && filterData.value.length > 0) {
-            const existingIds = new Set(items.map(i => i.id));
-            for (const m of filterData.value) {
-              if (!existingIds.has(m.id)) {
-                items.push({ type: 'received', subject: m.subject || '(no subject)', date: new Date(m.receivedDateTime || m.sentDateTime), preview: m.bodyPreview || '', id: m.id, conversationId: m.conversationId, webLink: m.webLink || '' });
-              }
+    // Helper: classify a message as sent or received
+    function classifyMessage(m, knownSentSet, knownRecvSet) {
+      const fromAddr = (m.from?.emailAddress?.address || '').toLowerCase();
+      const myLower = userEmail.toLowerCase();
+      // Use known ID sets for reliable classification, then fall back to from-address
+      if (knownSentSet.has(m.id) || fromAddr === myLower) {
+        return { type: 'sent', subject: m.subject || '(no subject)', date: new Date(m.sentDateTime || m.receivedDateTime), preview: m.bodyPreview || '', id: m.id, conversationId: m.conversationId, webLink: m.webLink || '' };
+      }
+      if (knownRecvSet.has(m.id) || fromAddr === email.toLowerCase()) {
+        return { type: 'received', subject: m.subject || '(no subject)', date: new Date(m.receivedDateTime || m.sentDateTime), preview: m.bodyPreview || '', id: m.id, conversationId: m.conversationId, webLink: m.webLink || '' };
+      }
+      return null;
+    }
+
+    const knownSentSet = new Set(knownSentIds);
+    const knownRecvSet = new Set(knownRecvIds);
+
+    // Fetch emails and calendar events in parallel
+    const emailPromise = (async () => {
+      if (allKnownIds.length > 0) {
+        // ── Fast path: fetch known IDs directly via $batch ──
+        // Cap at 100 most recent (if user has huge history, take newest)
+        const idsToFetch = allKnownIds.slice(0, 100);
+        const messages = await fetchMessagesByIds(idsToFetch);
+        for (const m of messages) {
+          const item = classifyMessage(m, knownSentSet, knownRecvSet);
+          if (item) items.push(item);
+        }
+      } else {
+        // ── Fallback: no known IDs (e.g. DB-only counts), use $search ──
+        const searchUrl = 'https://graph.microsoft.com/v1.0/me/messages?$top=75&' + select +
+          '&$search=' + encodeURIComponent('"participants:' + email + '"');
+        const searchResp = await fetch(searchUrl, { headers });
+        if (searchResp.ok) {
+          const searchData = await searchResp.json();
+          if (searchData.value) {
+            for (const m of searchData.value) {
+              const item = classifyMessage(m, knownSentSet, knownRecvSet);
+              if (item) items.push(item);
             }
           }
         }
-      } catch(e2) { console.warn('Received email filter fallback failed:', e2); }
-    }
-
-    // Calendar events — wrapped in try/catch since Calendars.Read may not be granted
-    try {
-      const calUrl = 'https://graph.microsoft.com/v1.0/me/events?$top=20&$select=subject,start,end,attendees,isOnlineMeeting' +
-        '&$search=' + encodeURIComponent('"' + email + '"');
-      const calResp = await fetch(calUrl, { headers });
-      if (calResp.ok) {
-        const calData = await calResp.json();
-        if (calData.value) for (const ev of calData.value) {
-          items.push({ type: 'meeting', subject: ev.subject || 'Meeting', date: new Date(ev.start?.dateTime), preview: (ev.isOnlineMeeting ? 'Online' : 'In-person') + ' · ' + (ev.attendees?.length || 0) + ' attendees', id: ev.id });
+        // If search missed received emails, try $filter fallback
+        if (!items.some(i => i.type === 'received')) {
+          try {
+            const filterUrl = 'https://graph.microsoft.com/v1.0/me/messages?$top=25&' + select +
+              '&$orderby=receivedDateTime desc&$filter=' + encodeURIComponent("from/emailAddress/address eq '" + email + "'");
+            const filterResp = await fetch(filterUrl, { headers });
+            if (filterResp.ok) {
+              const filterData = await filterResp.json();
+              const existingIds = new Set(items.map(i => i.id));
+              for (const m of (filterData.value || [])) {
+                if (!existingIds.has(m.id)) {
+                  items.push({ type: 'received', subject: m.subject || '(no subject)', date: new Date(m.receivedDateTime || m.sentDateTime), preview: m.bodyPreview || '', id: m.id, conversationId: m.conversationId, webLink: m.webLink || '' });
+                }
+              }
+            }
+          } catch(e2) { console.warn('Received email filter fallback failed:', e2); }
         }
       }
-    } catch(e) {}
+    })();
+
+    // Calendar events — run in parallel with email fetch
+    const calPromise = (async () => {
+      try {
+        const calUrl = 'https://graph.microsoft.com/v1.0/me/events?$top=20&$select=subject,start,end,attendees,isOnlineMeeting' +
+          '&$search=' + encodeURIComponent('"' + email + '"');
+        const calResp = await fetch(calUrl, { headers });
+        if (calResp.ok) {
+          const calData = await calResp.json();
+          if (calData.value) for (const ev of calData.value) {
+            items.push({ type: 'meeting', subject: ev.subject || 'Meeting', date: new Date(ev.start?.dateTime), preview: (ev.isOnlineMeeting ? 'Online' : 'In-person') + ' · ' + (ev.attendees?.length || 0) + ' attendees', id: ev.id });
+          }
+        }
+      } catch(e) {}
+    })();
+
+    await Promise.all([emailPromise, calPromise]);
 
     // Dedupe and sort by date descending
     const seen = new Set();
