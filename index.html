@@ -4890,6 +4890,97 @@ async function scanOutlookEmails(forceFullScan) {
   }
 }
 
+// ── Background count repair ──
+// Fixes domains that have last_activity_date but 0 sent/received counts.
+// This happens when the initial full scan saved metadata but not counts,
+// or when the sync-to-Supabase partially failed for some batches.
+// Queries Graph API for actual email counts per domain (lightweight $count queries).
+async function repairZeroCounts() {
+  if (!currentAccount || isScanning) return;
+  var zeroDomains = [];
+  for (var domain in domainMap) {
+    var d = domainMap[domain];
+    if (d.is_blocked || d.is_flagged) continue;
+    var hasDates = d.lastDate || d.lastSentDate || d.lastReceivedDate;
+    var sentCount = Math.max(d.sentIds ? d.sentIds.size : 0, d._dbSentCount || 0);
+    var recvCount = Math.max(d.receivedIds ? d.receivedIds.size : 0, d._dbReceivedCount || 0);
+    if (hasDates && sentCount === 0 && recvCount === 0) {
+      zeroDomains.push(domain);
+    }
+  }
+  if (zeroDomains.length === 0) return;
+  console.log('Count repair: found ' + zeroDomains.length + ' domains with 0 counts but activity dates');
+
+  var token;
+  try { token = await getAccessToken(); } catch(e) { return; }
+  var headers = graphHeaders(token);
+  var repaired = 0;
+
+  // Process in small batches to avoid rate limiting
+  for (var i = 0; i < Math.min(zeroDomains.length, 50); i++) {
+    var domain = zeroDomains[i];
+    var contacts = Object.keys(domainMap[domain].contacts);
+    if (contacts.length === 0) continue;
+
+    // Pick the primary contact email for the search
+    var searchEmail = contacts[0];
+
+    try {
+      // Search for emails involving this contact
+      var searchUrl = 'https://graph.microsoft.com/v1.0/me/messages?$top=100' +
+        '&$select=id,from,receivedDateTime' +
+        '&$search=' + encodeURIComponent('"participants:' + searchEmail + '"');
+      var resp = await fetch(searchUrl, { headers });
+      if (!resp.ok) continue;
+      var data = await resp.json();
+      var messages = data.value || [];
+      if (messages.length === 0) continue;
+
+      var myLower = userEmail ? userEmail.toLowerCase() : '';
+      var sentIds = domainMap[domain].sentIds;
+      var receivedIds = domainMap[domain].receivedIds;
+      var ct = domainMap[domain].contacts[searchEmail];
+
+      for (var m = 0; m < messages.length; m++) {
+        var msg = messages[m];
+        var fromAddr = (msg.from && msg.from.emailAddress && msg.from.emailAddress.address || '').toLowerCase();
+        if (fromAddr === myLower) {
+          sentIds.add(msg.id);
+          if (ct) ct.sentIds.add(msg.id);
+        } else {
+          receivedIds.add(msg.id);
+          if (ct) ct.receivedIds.add(msg.id);
+        }
+      }
+
+      // Update DB counts
+      if (sentIds.size > (domainMap[domain]._dbSentCount || 0)) domainMap[domain]._dbSentCount = sentIds.size;
+      if (receivedIds.size > (domainMap[domain]._dbReceivedCount || 0)) domainMap[domain]._dbReceivedCount = receivedIds.size;
+      if (ct) {
+        if (ct.sentIds.size > (ct._dbSentCount || 0)) ct._dbSentCount = ct.sentIds.size;
+        if (ct.receivedIds.size > (ct._dbReceivedCount || 0)) ct._dbReceivedCount = ct.receivedIds.size;
+      }
+
+      // Persist to Supabase
+      supabaseSaveCompanyField(domain, 'sent_count', sentIds.size);
+      supabaseSaveCompanyField(domain, 'received_count', receivedIds.size);
+      repaired++;
+
+      // Small delay to avoid rate limiting
+      if (i % 5 === 4) await new Promise(function(r) { setTimeout(r, 500); });
+    } catch(e) {
+      console.warn('Count repair: error for ' + domain + ':', e.message);
+    }
+  }
+
+  if (repaired > 0) {
+    console.log('Count repair: fixed ' + repaired + ' domains');
+    buildCompaniesFromDomainMap();
+    scheduleRenderTable();
+    updateStats();
+  }
+}
+
 // Full re-scan: clears everything and starts fresh
 async function fullRescan() {
   domainMap = {};
@@ -5124,6 +5215,9 @@ async function onSignedIn(unused, supabasePromise) {
 
     // Keep data fresh automatically
     startAutoSync();
+
+    // Background repair: fix domains with 0 email counts but known activity
+    setTimeout(() => repairZeroCounts(), 15000);
   }
 
   // Start real-time polling — pull changes from other devices every 30s
@@ -8193,20 +8287,82 @@ async function fetchContactTimeline(email, domain) {
       for (const k of tlKeys.slice(0, tlKeys.length - Math.floor(TIMELINE_CACHE_MAX / 2))) delete contactTimelineCache[k];
     }
 
-    // Fix contact lastDate from real email data (most recent email date)
+    // Fix contact counts + lastDate from real email data
     if (unique.length > 0 && domain && domainMap[domain]) {
       const realLastDate = unique[0].date;
       const ct = domainMap[domain].contacts[email.toLowerCase()];
-      if (ct && realLastDate) {
-        ct.lastDate = realLastDate;
-        // Update the "Last" stat in the header if it's currently displayed
-        const statsRow = document.querySelector('#dpRightHead .dp-ct-stats-row');
-        if (statsRow) {
-          const statDivs = statsRow.querySelectorAll('.dp-ct-stat');
-          if (statDivs.length >= 3) {
-            statDivs[2].innerHTML = '<b>' + timeAgo(realLastDate) + '</b>Last';
+
+      // ── Fix sent/received counts from timeline ──
+      // Timeline emails are the ground truth — update sentIds/receivedIds
+      // so counts are accurate (fixes 0-count bug for DB-loaded domains)
+      if (ct) {
+        var tlSent = 0, tlReceived = 0;
+        for (var ti = 0; ti < unique.length; ti++) {
+          var item = unique[ti];
+          if (item.type === 'meeting') continue;
+          if (item.type === 'sent') {
+            tlSent++;
+            if (item.id) ct.sentIds.add(item.id);
+            if (item.id) domainMap[domain].sentIds.add(item.id);
+          } else if (item.type === 'received') {
+            tlReceived++;
+            if (item.id) ct.receivedIds.add(item.id);
+            if (item.id) domainMap[domain].receivedIds.add(item.id);
           }
         }
+        // Update DB counts if timeline found more emails than stored
+        if (ct.sentIds.size > (ct._dbSentCount || 0)) ct._dbSentCount = ct.sentIds.size;
+        if (ct.receivedIds.size > (ct._dbReceivedCount || 0)) ct._dbReceivedCount = ct.receivedIds.size;
+        if (domainMap[domain].sentIds.size > (domainMap[domain]._dbSentCount || 0)) domainMap[domain]._dbSentCount = domainMap[domain].sentIds.size;
+        if (domainMap[domain].receivedIds.size > (domainMap[domain]._dbReceivedCount || 0)) domainMap[domain]._dbReceivedCount = domainMap[domain].receivedIds.size;
+
+        // Persist corrected counts to Supabase
+        if (tlSent > 0 || tlReceived > 0) {
+          supabaseSaveCompanyField(domain, 'sent_count', domainMap[domain].sentIds.size);
+          supabaseSaveCompanyField(domain, 'received_count', domainMap[domain].receivedIds.size);
+        }
+
+        // Update the displayed stats in the detail panel header
+        var newCtSent = Math.max(ct.sentIds.size, ct._dbSentCount || 0);
+        var newCtRecv = Math.max(ct.receivedIds.size, ct._dbReceivedCount || 0);
+        var statsRow = document.querySelector('#dpRightHead .dp-ct-stats-row');
+        if (statsRow) {
+          var statDivs = statsRow.querySelectorAll('.dp-ct-stat');
+          if (statDivs.length >= 1) statDivs[0].innerHTML = '<b>' + newCtSent + '</b>Sent';
+          if (statDivs.length >= 2) statDivs[1].innerHTML = '<b>' + newCtRecv + '</b>Received';
+          if (statDivs.length >= 3) statDivs[2].innerHTML = '<b>' + timeAgo(realLastDate) + '</b>Last';
+        }
+
+        // Update the company-level stats in the banner
+        var domSent = Math.max(domainMap[domain].sentIds.size, domainMap[domain]._dbSentCount || 0);
+        var domRecv = Math.max(domainMap[domain].receivedIds.size, domainMap[domain]._dbReceivedCount || 0);
+        var inlineStats = document.querySelector('.dp-mini-stats-inline');
+        if (inlineStats) {
+          var inlineStatDivs = inlineStats.querySelectorAll('.dp-inline-stat');
+          if (inlineStatDivs.length >= 1) inlineStatDivs[0].innerHTML = '<b style="color:var(--accent2)">' + domSent + '</b> Sent';
+          if (inlineStatDivs.length >= 2) inlineStatDivs[1].innerHTML = '<b style="color:var(--green)">' + domRecv + '</b> Received';
+          if (inlineStatDivs.length >= 3) inlineStatDivs[2].innerHTML = '<b>' + (domSent + domRecv) + '</b> Total';
+        }
+
+        // Update the sidebar contact list counts
+        var contactItems = document.querySelectorAll('.dp-contact[data-email]');
+        for (var ci = 0; ci < contactItems.length; ci++) {
+          var cItem = contactItems[ci];
+          var cEmail = cItem.getAttribute('data-email');
+          if (cEmail) {
+            var cData = domainMap[domain].contacts[cEmail.toLowerCase()];
+            if (cData) {
+              var cSent = Math.max(cData.sentIds ? cData.sentIds.size : 0, cData._dbSentCount || 0);
+              var cRecv = Math.max(cData.receivedIds ? cData.receivedIds.size : 0, cData._dbReceivedCount || 0);
+              var countEl = cItem.querySelector('.dp-ct-count');
+              if (countEl) countEl.textContent = cSent + '/' + cRecv;
+            }
+          }
+        }
+      }
+
+      if (ct && realLastDate) {
+        ct.lastDate = realLastDate;
       }
       // Also fix domain-level lastDate
       let maxDate = null;
