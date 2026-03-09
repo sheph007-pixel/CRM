@@ -1692,6 +1692,7 @@ let domainMap = {};
 // This eliminates the sync bugs caused by separate Sets/Objects getting out of sync with the DB.
 let seenMsgIds = new Set(); // track processed email IDs to prevent double-counting
 let msgIdIndex = {};  // msgId -> { domain, email (optional) } — reverse index for fast removal
+const SEEN_MSG_IDS_MAX = 500000; // cap to prevent unbounded memory growth
 let lastScanTime = null;
 let deltaLink = null; // Microsoft Graph delta sync token — tracks last sync position
 let currentSort = {key:'sent',asc:false};
@@ -2491,15 +2492,15 @@ function saveLocalCache() {
       for (const [email, ct] of Object.entries(d.contacts || {})) {
         contacts[email] = {
           name: ct.name, email: ct.email,
-          sent: ct._dbSentCount || ct.sentIds?.size || 0,
-          received: ct._dbReceivedCount || ct.receivedIds?.size || 0,
+          sent: Math.max(ct._dbSentCount || 0, ct.sentIds?.size || 0),
+          received: Math.max(ct._dbReceivedCount || 0, ct.receivedIds?.size || 0),
           lastDate: ct.lastDate ? ct.lastDate.toISOString() : null,
         };
       }
       cached[domain] = {
         contacts: contacts,
-        sent: d._dbSentCount || d.sentIds?.size || 0,
-        received: d._dbReceivedCount || d.receivedIds?.size || 0,
+        sent: Math.max(d._dbSentCount || 0, d.sentIds?.size || 0),
+        received: Math.max(d._dbReceivedCount || 0, d.receivedIds?.size || 0),
         lastDate: d.lastDate ? d.lastDate.toISOString() : null,
         lastSentDate: d.lastSentDate ? d.lastSentDate.toISOString() : null,
         lastReceivedDate: d.lastReceivedDate ? d.lastReceivedDate.toISOString() : null,
@@ -3605,7 +3606,6 @@ function startSupabasePolling() {
 }
 
 // Legacy stubs (no-op)
-function setSyncBadge() {}
 function gatherSyncPayload() { return {}; }
 
 // ──────────────────────────────────────────────
@@ -4103,8 +4103,6 @@ function updateDateField(obj, field, dateStr) {
 function recalcDomainDates() {
   for (const [domain, data] of Object.entries(domainMap)) {
     let maxDate = null;
-    let maxSentDate = null;
-    let maxReceivedDate = null;
     for (const c of Object.values(data.contacts)) {
       if (c.lastDate && (!maxDate || c.lastDate > maxDate)) maxDate = c.lastDate;
     }
@@ -4112,13 +4110,12 @@ function recalcDomainDates() {
     if (maxDate) {
       data.lastDate = maxDate;
     }
-    // Recalc sent/received dates: if contacts have IDs, domain has activity
-    // Keep existing lastSentDate/lastReceivedDate only if they're <= lastDate
-    if (data.lastSentDate && data.lastDate && data.lastSentDate > data.lastDate) {
-      data.lastSentDate = data.lastDate;
+    // Ensure lastDate is at least as recent as lastSentDate/lastReceivedDate
+    if (data.lastSentDate && (!data.lastDate || data.lastSentDate > data.lastDate)) {
+      data.lastDate = data.lastSentDate;
     }
-    if (data.lastReceivedDate && data.lastDate && data.lastReceivedDate > data.lastDate) {
-      data.lastReceivedDate = data.lastDate;
+    if (data.lastReceivedDate && (!data.lastDate || data.lastReceivedDate > data.lastDate)) {
+      data.lastDate = data.lastReceivedDate;
     }
   }
 }
@@ -4126,6 +4123,18 @@ function recalcDomainDates() {
 function processEmailBatch(messages) {
   const myEmailLower = userEmail ? userEmail.toLowerCase() : '';
   const myDomain = userEmail ? getDomain(userEmail) : null;
+
+  // Evict oldest entries if tracking structures are too large (prevents memory leaks)
+  if (seenMsgIds.size > SEEN_MSG_IDS_MAX) {
+    const toRemove = seenMsgIds.size - Math.floor(SEEN_MSG_IDS_MAX * 0.75);
+    let removed = 0;
+    for (const id of seenMsgIds) {
+      if (removed >= toRemove) break;
+      seenMsgIds.delete(id);
+      delete msgIdIndex[id];
+      removed++;
+    }
+  }
 
   for (const msg of messages) {
     // Skip already-processed messages to prevent double-counting
@@ -4183,9 +4192,10 @@ function processRemovedEmail(msgId) {
     if (data) {
       data.sentIds.delete(msgId);
       data.receivedIds.delete(msgId);
-      if (idx.email && data.contacts[idx.email]) {
-        data.contacts[idx.email].sentIds.delete(msgId);
-        data.contacts[idx.email].receivedIds.delete(msgId);
+      // Remove from ALL contacts in this domain (sent emails can have multiple recipients)
+      for (const ce of Object.values(data.contacts)) {
+        ce.sentIds.delete(msgId);
+        ce.receivedIds.delete(msgId);
       }
     }
     delete msgIdIndex[msgId];
@@ -4318,9 +4328,10 @@ function buildCompaniesFromDomainMap() {
     const uniqueSent = mergedSentIds.size || mergedDbSentCount;
     const uniqueReceived = mergedReceivedIds.size || mergedDbReceivedCount;
 
-    // Display counts = sum of contacts (matches what user sees in contact cards)
-    const domainSent = contactArr.reduce(function(s, ct) { return s + ct.sent; }, 0);
-    const domainReceived = contactArr.reduce(function(s, ct) { return s + ct.received; }, 0);
+    // Display counts = unique emails per domain (Set-based, not sum of contacts)
+    // Summing contacts would inflate counts when a single sent email has multiple recipients
+    const domainSent = uniqueSent;
+    const domainReceived = uniqueReceived;
 
     // SELECTIVE: only create company if user has sent at least 1 email to this domain
     // Skip filter for DB-loaded domains — they were already vetted
@@ -4733,10 +4744,7 @@ async function fetchEmailsProgressively(token, useDelta) {
     }
   }
 
-  // Final data rebuild (rendering handled by caller)
-  buildCompaniesFromDomainMap();
-  updateStats();
-
+  // Data rebuild handled by caller (scanOutlookEmails) to avoid redundant work
   return totalFetched;
 }
 
@@ -4805,11 +4813,9 @@ async function scanOutlookEmails(forceFullScan) {
     updateLastSyncDisplay();
 
     // Single final render after scan completes — no mid-scan re-renders
-    if (totalFetched > 0) {
-      buildCompaniesFromDomainMap();
-      renderTable();
-      updateStats();
-    }
+    buildCompaniesFromDomainMap();
+    renderTable();
+    updateStats();
 
     if (needsFullScan) {
       // Full scan: run enrichment tasks in background
