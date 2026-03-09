@@ -2675,19 +2675,34 @@ async function initSupabase() {
 async function supabaseEnsureUser(authId, email, displayName) {
   if (!supabaseReady) return null;
   try {
-    // First try to find existing user by email (backward compatible with MS-only users)
-    var { data: existing } = await supabaseClient
+    // Find existing user by email — use limit(1) + order to handle duplicate rows safely.
+    // maybeSingle() errors when multiple rows match the same email, which silently
+    // caused new empty user rows to be created on every login, losing all saved data.
+    var { data: rows, error: findErr } = await supabaseClient
       .from('users')
       .select('id')
       .eq('email', email)
-      .maybeSingle();
-    if (existing) {
-      supabaseUserId = existing.id;
+      .order('created_at', { ascending: true })
+      .limit(1);
+    if (!findErr && rows && rows.length > 0) {
+      supabaseUserId = rows[0].id;
       try { localStorage.setItem('kennion_sb_uid', supabaseUserId); } catch(e) {}
       console.log('Supabase: found existing user by email, id=' + supabaseUserId);
       return supabaseUserId;
     }
-    // Create new user
+    // Also try finding by microsoft_id (handles case where email changed)
+    var { data: msRows, error: msErr } = await supabaseClient
+      .from('users')
+      .select('id')
+      .eq('microsoft_id', authId)
+      .limit(1);
+    if (!msErr && msRows && msRows.length > 0) {
+      supabaseUserId = msRows[0].id;
+      try { localStorage.setItem('kennion_sb_uid', supabaseUserId); } catch(e) {}
+      console.log('Supabase: found existing user by microsoft_id, id=' + supabaseUserId);
+      return supabaseUserId;
+    }
+    // Create new user only if no existing user found by email or microsoft_id
     var { data, error } = await supabaseClient
       .from('users')
       .upsert({ microsoft_id: authId, email: email, display_name: displayName || email },
