@@ -1,24 +1,15 @@
 {
-  "buildCommand": null,
-  "outputDirectory": ".",
-  "framework": null,
-  "ignoreCommand": "[ \"$VERCEL_GIT_COMMIT_REF\" != \"main\" ]",
-  "rewrites": [
-    { "source": "/api/keepalive", "destination": "/api/keepalive.js" },
-    { "source": "/api/openai", "destination": "/api/openai.js" },
-    { "source": "/api/confirm-user", "destination": "/api/confirm-user.js" },
-    { "source": "/api/run-migration", "destination": "/api/run-migration.js" },
-    { "source": "/api/debug-user", "destination": "/api/debug-user.js" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ],
+  "buildCommand": "cd next && npm install && npm run build",
+  "outputDirectory": "next/.next",
+  "framework": "nextjs",
+  "installCommand": "cd next && npm install",
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
       ]
     }
   ],
